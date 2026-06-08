@@ -1,0 +1,63 @@
+diff --git a/node_modules/fontkit/dist/main.cjs b/node_modules/fontkit/dist/main.cjs
+index 851b2d2..b2b117a 100644
+--- a/node_modules/fontkit/dist/main.cjs
++++ b/node_modules/fontkit/dist/main.cjs
+@@ -9976,6 +9976,11 @@ class $79ea6270f0a90256$export$2e2bcd8739ae039 extends (0, $7b226e6bbeadedeb$exp
+         }
+     }
+     applyAnchor(markRecord, baseAnchor, baseGlyphIndex) {
++        // A null base anchor means this mark class is not defined for this
++        // base glyph (legal per the OpenType spec — e.g. Noto Sans Devanagari
++        // has sparse Mark2Array tables). Leave the mark at its nominal
++        // position rather than crashing or applying a bogus offset.
++        if (!baseAnchor) return;
+         let baseCoords = this.getAnchor(baseAnchor);
+         let markCoords = this.getAnchor(markRecord.markAnchor);
+         let basePos = this.positions[baseGlyphIndex];
+@@ -9985,6 +9990,15 @@ class $79ea6270f0a90256$export$2e2bcd8739ae039 extends (0, $7b226e6bbeadedeb$exp
+         this.glyphIterator.cur.markAttachment = baseGlyphIndex;
+     }
+     getAnchor(anchor) {
++        // Some fonts (e.g. Noto Sans Devanagari) contain null-offset anchor
++        // tables in sparse mark arrays — treat a missing anchor as (0, 0)
++        // instead of crashing (matches the OpenType spec's "no anchor" case).
++        if (!anchor) {
++            return {
++                x: 0,
++                y: 0
++            };
++        }
+         // TODO: contour point, device tables
+         let x = anchor.xCoordinate;
+         let y = anchor.yCoordinate;
+diff --git a/node_modules/fontkit/src/opentype/GPOSProcessor.js b/node_modules/fontkit/src/opentype/GPOSProcessor.js
+index 6a2c1f9..7386539 100644
+--- a/node_modules/fontkit/src/opentype/GPOSProcessor.js
++++ b/node_modules/fontkit/src/opentype/GPOSProcessor.js
+@@ -273,6 +273,12 @@ export default class GPOSProcessor extends OTProcessor {
+   }
+ 
+   applyAnchor(markRecord, baseAnchor, baseGlyphIndex) {
++    // A null base anchor means this mark class is not defined for this base
++    // glyph (legal per the OpenType spec — e.g. Noto Sans Devanagari has
++    // sparse Mark2Array tables). Leave the mark at its nominal position
++    // rather than crashing or applying a bogus offset.
++    if (!baseAnchor) return;
++
+     let baseCoords = this.getAnchor(baseAnchor);
+     let markCoords = this.getAnchor(markRecord.markAnchor);
+ 
+@@ -285,6 +291,13 @@ export default class GPOSProcessor extends OTProcessor {
+   }
+ 
+   getAnchor(anchor) {
++    // Some fonts (e.g. Noto Sans Devanagari) contain null-offset anchor
++    // tables in sparse mark arrays — treat a missing anchor as (0, 0)
++    // instead of crashing (matches the OpenType spec's "no anchor" case).
++    if (!anchor) {
++      return { x: 0, y: 0 };
++    }
++
+     // TODO: contour point, device tables
+     let x = anchor.xCoordinate;
+     let y = anchor.yCoordinate;

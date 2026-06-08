@@ -1,0 +1,4 @@
+Noto Sans Devanagari is licensed under the SIL Open Font License, Version 1.1.
+Source: https://github.com/notofonts/noto-fonts (unhinted/ttf/NotoSansDevanagari)
+Copyright 2015-2022 Google Inc. All Rights Reserved.
+Full license text: https://openfontlicense.org/
