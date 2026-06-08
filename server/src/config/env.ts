@@ -28,7 +28,7 @@ export const env = {
   supabaseAnonKey: required("SUPABASE_ANON_KEY"),
   supabaseServiceRoleKey: required("SUPABASE_SERVICE_ROLE_KEY"),
 
-  geminiApiKey: optional("GEMINI_API_KEY"),
+  claudeApiKey: optional("CLAUDE_API_KEY"),
 
   resendApiKey: optional("RESEND_API_KEY"),
   emailFrom: optional("EMAIL_FROM", "App <noreply@example.com>"),
