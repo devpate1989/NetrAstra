@@ -95,12 +95,9 @@ export default function LoginScreen() {
 
           <PrimaryButton label="Sign in" onPress={handleLogin} loading={loading} />
 
-          <View className="mt-6 flex-row justify-center">
-            <Text className="text-sm text-slate-500">Don&apos;t have an account? </Text>
-            <Link href="/(auth)/register" className="text-sm font-semibold text-brand-600">
-              Register
-            </Link>
-          </View>
+          <Text className="mt-6 text-center text-xs text-slate-400">
+            Accounts are created by your station Admin.
+          </Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
