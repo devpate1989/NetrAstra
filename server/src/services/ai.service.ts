@@ -13,6 +13,11 @@ function getClient(): Anthropic {
   return _client;
 }
 
+// Claude sometimes wraps JSON in ```json ... ``` fences even when asked not to.
+function stripFences(text: string): string {
+  return text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+}
+
 export function isAiConfigured(): boolean {
   return Boolean(env.claudeApiKey);
 }
@@ -47,7 +52,7 @@ export async function askClaude(
 
 /**
  * Analyses a completed inquiry report and returns a structured JSON assessment:
- * - consistency: are the facts internally consistent?
+ * - consistent: are the facts internally consistent?
  * - gaps: list of missing or unclear points
  * - suggestion: one-line recommendation for the officer
  *
@@ -71,7 +76,7 @@ No markdown, no extra text — just the JSON object.`,
       1024
     );
 
-    return JSON.parse(raw);
+    return JSON.parse(stripFences(raw));
   } catch (err) {
     console.error("[ai] Report analysis failed:", err);
     return null;
@@ -99,7 +104,7 @@ No markdown, no extra text — just the JSON object.`,
       512
     );
 
-    return JSON.parse(raw);
+    return JSON.parse(stripFences(raw));
   } catch (err) {
     console.error("[ai] Petition analysis failed:", err);
     return null;
