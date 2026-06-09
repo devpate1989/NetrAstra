@@ -17,6 +17,16 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",
     "@supabase/supabase-js": "^2.108.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^25.9.2",
+    "@types/pdfkit": "^0.17.6",
+    "@types/pg": "^8.20.0",
+    "@types/selenium-webdriver": "^4.35.6",
+    "@types/xlsx": "^0.0.35",
     "axios": "^1.17.0",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
@@ -27,23 +37,16 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "node-cron": "^4.2.1",
+    "patch-package": "^8.0.1",
     "pdfkit": "^0.19.0",
-    "puppeteer": "^25.1.0",
+    "pg": "^8.21.0",
     "resend": "^6.12.4",
+    "selenium-webdriver": "^4.44.0",
+    "typescript": "^6.0.3",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/multer": "^2.1.0",
-    "@types/node": "^25.9.2",
-    "@types/pdfkit": "^0.17.6",
-    "@types/pg": "^8.20.0",
-    "patch-package": "^8.0.1",
-    "pg": "^8.21.0",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^6.0.3"
+    "ts-node-dev": "^2.0.0"
   }
 }
