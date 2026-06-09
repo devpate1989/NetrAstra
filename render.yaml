@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: netra-astra-server
+    runtime: node
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: JWT_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CLAUDE_API_KEY
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: POLICE_STATION_NAME
+        sync: false
+      - key: POLICE_DISTRICT_NAME
+        sync: false
+      - key: CCTNS_PORTAL_URL
+        sync: false
+      - key: CCTNS_USERNAME
+        sync: false
+      - key: CCTNS_PASSWORD
+        sync: false
+      - key: CCTNS_ZONE_ID
+        sync: false
+      - key: CCTNS_RANGE_ID
+        sync: false
+      - key: CCTNS_DISTRICT_ID
+        sync: false
+      - key: CCTNS_PS_ID
+        sync: false
+      - key: JANSUNWAI_PORTAL_URL
+        sync: false
+      - key: JANSUNWAI_USERNAME
+        sync: false
+      - key: JANSUNWAI_PASSWORD
+        sync: false
