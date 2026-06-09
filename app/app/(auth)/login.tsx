@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Image, KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { Text } from "../../components/Text";
-import { Link, router } from "expo-router";
+import { router } from "expo-router";
 import { Banner } from "../../components/Banner";
 import { FormField } from "../../components/FormField";
 import { PrimaryButton } from "../../components/PrimaryButton";
@@ -9,7 +9,7 @@ import { apiRequest } from "../../lib/api";
 import { supabase } from "../../lib/supabase";
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -17,8 +17,8 @@ export default function LoginScreen() {
   async function handleLogin() {
     setError("");
 
-    if (!email.trim() || !password) {
-      setError("Please enter your email and password.");
+    if (!username.trim() || !password) {
+      setError("Please enter your username and password.");
       return;
     }
 
@@ -28,20 +28,16 @@ export default function LoginScreen() {
         session: { accessToken: string; refreshToken: string };
       }>("/auth/login", {
         method: "POST",
-        body: { email: email.trim(), password },
+        body: { username: username.trim().toLowerCase(), password },
         skipAuth: true,
       });
 
-      // Hand the issued session to the Supabase client so it persists
-      // and `onAuthStateChange` picks it up across the app.
       const { error: setSessionError } = await supabase.auth.setSession({
         access_token: result.session.accessToken,
         refresh_token: result.session.refreshToken,
       });
 
-      if (setSessionError) {
-        throw setSessionError;
-      }
+      if (setSessionError) throw setSessionError;
 
       router.replace("/(app)/dashboard");
     } catch (err: any) {
@@ -61,7 +57,9 @@ export default function LoginScreen() {
           <View className="mb-8 items-center">
             <Image
               source={require("../../assets/icon.png")}
-              className="mb-4 h-16 w-16 rounded-2xl"
+              className="mb-4 rounded-2xl"
+              style={{ width: 64, height: 64 }}
+              resizeMode="contain"
             />
             <Text className="text-2xl font-bold text-slate-900">Netra Astra</Text>
             <Text className="mt-1 text-center text-sm text-slate-500">
@@ -72,12 +70,12 @@ export default function LoginScreen() {
           <Banner message={error} variant="error" />
 
           <FormField
-            label="Email"
-            placeholder="you@police.gov.in"
+            label="Username"
+            placeholder="e.g. rajesh.kumar"
             autoCapitalize="none"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
+            autoCorrect={false}
+            value={username}
+            onChangeText={setUsername}
           />
           <FormField
             label="Password"
@@ -86,12 +84,6 @@ export default function LoginScreen() {
             value={password}
             onChangeText={setPassword}
           />
-
-          <View className="mb-2 items-end">
-            <Link href="/(auth)/forgot-password" className="text-sm text-brand-600">
-              Forgot password?
-            </Link>
-          </View>
 
           <PrimaryButton label="Sign in" onPress={handleLogin} loading={loading} />
 

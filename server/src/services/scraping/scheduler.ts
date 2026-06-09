@@ -4,15 +4,11 @@ import { runJanSunwaiScrape } from "./janSunwaiPortal.service";
 
 /**
  * Schedules the CCTNS-portal and Jan Sunwai scrape jobs (prompt.md modules 8 & 9)
- * to run automatically so dashboards stay reasonably fresh without anyone
- * having to remember to hit "refresh". Both scrapers no-op (and log why) when
- * their portal isn't configured yet, so this is always safe to start.
- *
- * Runs at 6:00, 12:00 and 18:00 server time — frequent enough to catch new
- * pending items within a shift, infrequent enough not to hammer the portals
- * or look like abuse of someone else's login session.
+ * to run every 30 minutes so the allotment list stays current. Both scrapers
+ * no-op (and log why) when their portal isn't configured yet, so this is
+ * always safe to start.
  */
-const SCRAPE_CRON_EXPRESSION = "0 6,12,18 * * *";
+const SCRAPE_CRON_EXPRESSION = "*/30 * * * *";
 
 let started = false;
 

@@ -11,9 +11,9 @@ require("dotenv").config({ path: path.resolve(__dirname, "..", "..", ".env") });
 const MIGRATIONS_DIR = path.resolve(__dirname, "..", "..", "supabase", "migrations");
 
 async function main() {
-  const connectionString = process.env.SUPABASE_URL;
+  const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_URL;
   if (!connectionString || !connectionString.startsWith("postgres")) {
-    throw new Error("SUPABASE_URL must be a postgres:// connection string to run migrations directly.");
+    throw new Error("DATABASE_URL (or SUPABASE_URL) must be a postgres:// connection string to run migrations directly.");
   }
 
   const files = fs

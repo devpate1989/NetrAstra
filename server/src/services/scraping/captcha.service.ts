@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { ElementHandle, Page } from "puppeteer";
+import { WebDriver } from "selenium-webdriver";
 import { env } from "../../config/env";
+import { findElement } from "./browser";
 
 /**
  * Reads a CAPTCHA image with the Claude API (vision) and returns the text it
@@ -9,14 +10,21 @@ import { env } from "../../config/env";
  * Returns null if no CLAUDE_API_KEY is configured or the model can't read it —
  * callers should treat that as "could not log in this run" and retry later.
  */
-export async function solveCaptchaImage(pngBuffer: Buffer): Promise<string | null> {
+function detectMediaType(buf: Buffer): "image/png" | "image/jpeg" | "image/gif" | "image/webp" {
+  if (buf[0] === 0x89 && buf[1] === 0x50) return "image/png";
+  if (buf[0] === 0xff && buf[1] === 0xd8) return "image/jpeg";
+  if (buf[0] === 0x47 && buf[1] === 0x49) return "image/gif";
+  return "image/webp";
+}
+
+export async function solveCaptchaImage(imgBuffer: Buffer): Promise<string | null> {
   if (!env.claudeApiKey) return null;
 
   try {
     const client = new Anthropic({ apiKey: env.claudeApiKey });
 
     const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-4-6",
       max_tokens: 64,
       messages: [
         {
@@ -26,8 +34,8 @@ export async function solveCaptchaImage(pngBuffer: Buffer): Promise<string | nul
               type: "image",
               source: {
                 type: "base64",
-                media_type: "image/png",
-                data: pngBuffer.toString("base64"),
+                media_type: detectMediaType(imgBuffer),
+                data: imgBuffer.toString("base64"),
               },
             },
             {
@@ -51,14 +59,9 @@ export async function solveCaptchaImage(pngBuffer: Buffer): Promise<string | nul
   }
 }
 
-/**
- * Convenience helper: screenshots a CAPTCHA <img>/canvas element on the page
- * and asks Claude to read it. Returns null if the element/key is missing.
- */
-export async function solveCaptchaElement(page: Page, captchaSelector: string): Promise<string | null> {
-  const element: ElementHandle | null = await page.$(captchaSelector);
+export async function solveCaptchaElement(driver: WebDriver, captchaSelector: string): Promise<string | null> {
+  const element = await findElement(driver, captchaSelector);
   if (!element) return null;
-
-  const screenshot = await element.screenshot({ type: "png" });
-  return solveCaptchaImage(Buffer.from(screenshot as Buffer));
+  const b64 = await element.takeScreenshot();
+  return solveCaptchaImage(Buffer.from(b64, "base64"));
 }
