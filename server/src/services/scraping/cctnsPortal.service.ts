@@ -1,57 +1,88 @@
-import type { Page } from "puppeteer";
+import fs from "fs";
+import path from "path";
+import { WebDriver } from "selenium-webdriver";
 import { env } from "../../config/env";
 import { supabaseAdmin } from "../../config/supabase";
-import { withPage } from "./browser";
-import { solveCaptchaElement } from "./captcha.service";
+import { withDriver } from "./browser";
+
+async function debugSnapshot(driver: WebDriver, tag: string): Promise<void> {
+  try {
+    const url = await driver.getCurrentUrl();
+    const title = await driver.getTitle();
+    const png = await driver.takeScreenshot();
+    const dir = path.resolve(__dirname, "../../../../../debug-screenshots");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${tag}-${Date.now()}.png`);
+    fs.writeFileSync(file, png, "base64");
+    console.log(`[cctns-scraper] snapshot: url=${url} title="${title}" file=${file}`);
+  } catch (e) {
+    console.warn("[cctns-scraper] Could not take debug snapshot:", e);
+  }
+}
 
 /**
  * ──────────────────────────────────────────────────────────────────────────
- * SITE ADAPTER — CCTNS / FIR pending-investigations portal (prompt.md module 8)
+ * SITE ADAPTER — CCTNS / FIR pending-investigations portal
+ * All selectors verified from live DOM inspection on 2026-06-09.
  *
- * Everything that depends on the *target site's* markup lives in this single
- * block so the scrape logic below never has to change when the portal's HTML
- * does — only update these selectors/paths to match the real site once its
- * URL is known.
+ * Flow:
+ *   1. Login (no CAPTCHA)
+ *   2. FIRPendingInvestigation.aspx — set dates + cascade to Kumarganj PS
+ *   3. Submit → summary table #gdvdata (1 row: 66 pending / 2764 total)
+ *   4. Click the "66" link → PostBack → popup table #gdvPopUP
+ *   5. Extract each page of #gdvPopUP (pagination via Page$N PostBack)
+ *   6. Store individual FIR records (FIR No, Date, Sections, IO Name)
  * ──────────────────────────────────────────────────────────────────────────
  */
 const ADAPTER = {
-  /** Path appended to CCTNS_PORTAL_URL to reach the login page (often "/" or "/login"). */
-  loginPath: "/login",
-  /** Path appended to CCTNS_PORTAL_URL to reach the pending-investigations listing. */
-  listingPath: "/pending-investigations",
+  loginPath: "/CCTNSWEB/Login.aspx",
+  listingPath: "/CCTNSWEB/FIRPendingInvestigation.aspx",
 
-  usernameSelector: "#username, input[name='username'], input[name='loginid']",
-  passwordSelector: "#password, input[name='password']",
-  /** CAPTCHA <img>/<canvas>, if the login form has one — solved via Gemini (see captcha.service). */
-  captchaImageSelector: "#captchaImage, img.captcha, canvas.captcha",
-  captchaInputSelector: "#captcha, input[name='captcha']",
-  submitSelector: "button[type='submit'], input[type='submit']",
+  usernameSelector: "#txtUserName",
+  passwordSelector: "#txtPassword",
+  loginButtonSelector: "#btnLogin",
+  loggedInUrlFragment: "home.aspx",
 
-  /** A selector that only appears once logged in — used to confirm success. */
-  loggedInMarkerSelector: "#logoutBtn, a[href*='logout'], .dashboard",
+  // Date fields — bypass MaskedEdit via JS
+  fromDateId: "txtStartDate",
+  fromDateClientStateId: "meeFromDate_ClientState",
+  toDateId: "txtEndDate",
+  toDateClientStateId: "meeToDate_ClientState",
+  fromDateValue: "01/01/1995",
 
-  /** Each pending-investigation row in the listing table/list. */
-  rowSelector: "table.pending-investigations tbody tr, .investigation-row",
-  fields: {
-    externalReference: ".case-no, td:nth-child(1)",
-    ioName: ".io-name, td:nth-child(2)",
-    complainantName: ".complainant, td:nth-child(3)",
-    section: ".section, td:nth-child(4)",
-    caseSummary: ".summary, td:nth-child(5)",
-    caseStatus: ".status, td:nth-child(6)",
-    registeredOn: ".registered-on, td:nth-child(7)",
+  // Cascade dropdowns
+  zoneDropdown: "ddlzone",
+  rangeDropdown: "ddlrange",
+  districtDropdown: "ddlDistrict",
+  psDropdown: "ddlPoliceStation",
+  reportTypeDropdown: "ddlReportType",
+  reportTypePs: "2",
+
+  // Summary search button (JS click to avoid StaleElementReferenceError)
+  searchButtonId: "btnSearchFir",
+
+  // Summary result table → click the pending-count link in col 5 of data row
+  summaryTableId: "gdvdata",
+  pendingCountLinkPostback: "gdvdata$ctl02$lnkFIRPSDetails",
+
+  // Detailed popup table (appears after clicking the pending count link)
+  popupTableId: "gdvPopUP",
+
+  // Popup columns (0-based)
+  popupCols: {
+    firNo: 3,
+    firDate: 4,
+    actSection: 5,
+    ioName: 6,
   },
 } as const;
 
-interface ScrapedInvestigationRow {
-  externalReference: string | null;
-  ioName: string | null;
-  complainantName: string | null;
-  section: string | null;
-  caseSummary: string | null;
-  caseStatus: string | null;
-  registeredOn: string | null;
-  raw: Record<string, string | null>;
+interface FirRecord {
+  firNo: string;
+  firDate: string;
+  actSection: string;
+  ioName: string;
+  ioNameParsed: string; // just the person's name
 }
 
 export interface CctnsScrapeResult {
@@ -66,154 +97,327 @@ function isConfigured(): boolean {
   return Boolean(env.cctnsPortalUrl && env.cctnsUsername && env.cctnsPassword);
 }
 
-async function login(page: Page): Promise<boolean> {
-  const loginUrl = new URL(ADAPTER.loginPath, env.cctnsPortalUrl).toString();
-  await page.goto(loginUrl, { waitUntil: "networkidle2" });
-
-  await page.waitForSelector(ADAPTER.usernameSelector, { timeout: 15_000 });
-  await page.type(ADAPTER.usernameSelector, env.cctnsUsername, { delay: 20 });
-  await page.type(ADAPTER.passwordSelector, env.cctnsPassword, { delay: 20 });
-
-  const captcha = await page.$(ADAPTER.captchaImageSelector);
-  if (captcha) {
-    const answer = await solveCaptchaElement(page, ADAPTER.captchaImageSelector);
-    if (!answer) {
-      console.warn("[cctns-scraper] CAPTCHA present but could not be solved (Gemini unavailable or unreadable)");
-      return false;
-    }
-    await page.type(ADAPTER.captchaInputSelector, answer, { delay: 20 });
-  }
-
-  await Promise.all([
-    page.click(ADAPTER.submitSelector),
-    page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30_000 }).catch(() => null),
-  ]);
-
-  const loggedIn = await page
-    .waitForSelector(ADAPTER.loggedInMarkerSelector, { timeout: 15_000 })
-    .then(() => true)
-    .catch(() => false);
-
-  return loggedIn;
+function baseUrl(): string {
+  return new URL(env.cctnsPortalUrl).origin;
 }
 
-async function scrapeListing(page: Page): Promise<ScrapedInvestigationRow[]> {
-  const listingUrl = new URL(ADAPTER.listingPath, env.cctnsPortalUrl).toString();
-  await page.goto(listingUrl, { waitUntil: "networkidle2" });
-  await page.waitForSelector(ADAPTER.rowSelector, { timeout: 20_000 }).catch(() => null);
-
-  return page.evaluate(
-    // Runs in the browser context, where DOM globals (document, Element, ...)
-    // exist but aren't in this project's (Node-only) `lib` — hence `any`.
-    (rowSelector: string, fields: Record<string, string>) => {
-      const doc = (globalThis as any).document;
-      const text = (root: any, selector: string): string | null => {
-        const el = root.querySelector(selector);
-        const value = el?.textContent?.replace(/\s+/g, " ").trim();
-        return value && value.length > 0 ? value : null;
-      };
-
-      return Array.from(doc.querySelectorAll(rowSelector)).map((row: any) => {
-        const raw: Record<string, string | null> = {};
-        for (const [key, selector] of Object.entries(fields)) {
-          raw[key] = text(row, selector as string);
-        }
-        return {
-          externalReference: raw.externalReference,
-          ioName: raw.ioName,
-          complainantName: raw.complainantName,
-          section: raw.section,
-          caseSummary: raw.caseSummary,
-          caseStatus: raw.caseStatus,
-          registeredOn: raw.registeredOn,
-          raw,
-        };
-      });
-    },
-    ADAPTER.rowSelector,
-    ADAPTER.fields
-  );
+function todayDDMMYYYY(): string {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
-/** Normalizes loosely-formatted scraped dates ("12-06-2026", "12 Jun 2026", ...) to ISO `YYYY-MM-DD`, or null. */
-function normalizeDate(value: string | null): string | null {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
-}
-
-async function storeRows(rows: ScrapedInvestigationRow[]): Promise<number> {
-  if (rows.length === 0) return 0;
-
-  const records = rows
-    .filter((row) => row.externalReference)
-    .map((row) => ({
-      source: "cctns_portal",
-      external_reference: row.externalReference,
-      police_station: env.policeStationName || "Unknown",
-      district: env.policeDistrictName || null,
-      io_name: row.ioName,
-      section: row.section,
-      complainant_name: row.complainantName,
-      case_summary: row.caseSummary,
-      case_status: row.caseStatus,
-      registered_on: normalizeDate(row.registeredOn),
-      raw_data: row.raw,
-      scraped_at: new Date().toISOString(),
-    }));
-
-  if (records.length === 0) return 0;
-
-  const { error } = await supabaseAdmin
-    .from("investigations")
-    .upsert(records, { onConflict: "source,external_reference" });
-
-  if (error) {
-    console.error("[cctns-scraper] Failed to store scraped rows:", error.message);
-    return 0;
-  }
-
-  return records.length;
+/** "DD/MM/YYYY" → "YYYY-MM-DD" */
+function parseFirDate(ddmmyyyy: string): string | null {
+  const parts = ddmmyyyy.trim().split("/");
+  if (parts.length !== 3) return null;
+  const [dd, mm, yyyy] = parts;
+  const iso = `${yyyy}-${mm}-${dd}`;
+  return Number.isNaN(Date.parse(iso)) ? null : iso;
 }
 
 /**
- * Logs into the CCTNS portal, scrapes the pending-investigations list for the
- * configured police station, normalizes it, and upserts it into
- * `public.investigations` (so dashboards read from Supabase, not the live
- * site). Safe to call on a schedule (cron) or on demand — returns a summary
- * either way, and never throws (errors are logged + reflected in the result).
+ * "SI (Sub-Inspector) - ASHOK KUMAR PATHAK - 980500431" → "ASHOK KUMAR PATHAK"
+ * "Dy. SP (Deputy Superintendant of Police) - CO MILKIPUR - 9454401395" → "CO MILKIPUR"
+ */
+function parseIoName(raw: string): string {
+  const parts = raw.split(" - ");
+  return parts.length >= 2 ? parts[1].trim() : raw.trim();
+}
+
+async function login(driver: WebDriver): Promise<boolean> {
+  await driver.get(baseUrl() + ADAPTER.loginPath);
+  await driver.sleep(3_000);
+
+  try {
+    const u = await driver.findElement({ css: ADAPTER.usernameSelector });
+    const p = await driver.findElement({ css: ADAPTER.passwordSelector });
+    const b = await driver.findElement({ css: ADAPTER.loginButtonSelector });
+    await u.clear(); await u.sendKeys(env.cctnsUsername);
+    await p.clear(); await p.sendKeys(env.cctnsPassword);
+    await b.click();
+  } catch (err) {
+    console.error("[cctns-scraper] Could not find login fields:", err);
+    await debugSnapshot(driver, "login-error");
+    return false;
+  }
+
+  await driver.sleep(4_000);
+  await debugSnapshot(driver, "post-login");
+
+  const url = await driver.getCurrentUrl();
+  if (!url.toLowerCase().includes(ADAPTER.loggedInUrlFragment)) {
+    console.warn("[cctns-scraper] Login failed. URL:", url);
+    return false;
+  }
+  return true;
+}
+
+async function selectDropdown(driver: WebDriver, id: string, value: string): Promise<void> {
+  await driver.executeScript(
+    `const s = document.getElementById(arguments[0]);
+     if (!s) return;
+     s.value = arguments[1];
+     s.dispatchEvent(new Event('change', { bubbles: true }));`,
+    id, value
+  );
+}
+
+async function waitForDropdownReload(
+  driver: WebDriver, id: string, previousCount: number, timeoutMs = 10_000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const count: number = await driver.executeScript(
+      `const s = document.getElementById(arguments[0]); return s ? s.options.length : 0;`, id
+    );
+    if (count !== previousCount && count > 1) return;
+    await driver.sleep(500);
+  }
+  console.warn(`[cctns-scraper] Dropdown #${id} did not reload within ${timeoutMs}ms`);
+}
+
+async function applyFilters(driver: WebDriver): Promise<void> {
+  const zoneId = env.cctnsZoneId || "76";
+  const rangeId = env.cctnsRangeId || "240";
+  const districtId = env.cctnsDistrictId || "31641";
+  const psId = env.cctnsPsId || "31641033";
+
+  const rc: number = await driver.executeScript(
+    `const s = document.getElementById('ddlrange'); return s ? s.options.length : 0;`
+  );
+  await selectDropdown(driver, ADAPTER.zoneDropdown, zoneId);
+  await waitForDropdownReload(driver, ADAPTER.rangeDropdown, rc);
+  await driver.sleep(500);
+
+  const dc: number = await driver.executeScript(
+    `const s = document.getElementById('ddlDistrict'); return s ? s.options.length : 0;`
+  );
+  await selectDropdown(driver, ADAPTER.rangeDropdown, rangeId);
+  await waitForDropdownReload(driver, ADAPTER.districtDropdown, dc);
+  await driver.sleep(500);
+
+  const pc: number = await driver.executeScript(
+    `const s = document.getElementById('ddlPoliceStation'); return s ? s.options.length : 0;`
+  );
+  await selectDropdown(driver, ADAPTER.districtDropdown, districtId);
+  await waitForDropdownReload(driver, ADAPTER.psDropdown, pc);
+  await driver.sleep(500);
+
+  await selectDropdown(driver, ADAPTER.psDropdown, psId);
+  await driver.sleep(300);
+  await selectDropdown(driver, ADAPTER.reportTypeDropdown, ADAPTER.reportTypePs);
+}
+
+/** Extract all FIR rows from the current page of #gdvPopUP. */
+async function extractPopupPage(driver: WebDriver): Promise<FirRecord[]> {
+  return driver.executeScript<FirRecord[]>(
+    function (tableId: any, cols: any) {
+      const table = (globalThis as any).document.getElementById(tableId) as any;
+      if (!table) return [];
+
+      const records: any[] = [];
+      for (let i = 1; i < table.rows.length; i++) {
+        const cells = table.rows[i].cells;
+        if (cells.length < 7) continue;
+
+        const text = (idx: number): string =>
+          (cells[idx]?.textContent ?? "").replace(/\s+/g, " ").trim();
+
+        const firNo = text(cols.firNo);
+        if (!firNo) continue; // skip totals / empty rows
+
+        const raw = text(cols.ioName);
+        const parts = raw.split(" - ");
+        const ioNameParsed = parts.length >= 2 ? parts[1].trim() : raw.trim();
+
+        records.push({
+          firNo,
+          firDate: text(cols.firDate),
+          actSection: text(cols.actSection),
+          ioName: raw,
+          ioNameParsed,
+        });
+      }
+      return records;
+    },
+    ADAPTER.popupTableId,
+    ADAPTER.popupCols
+  );
+}
+
+/** Read total page count from the popup's pager row. */
+async function getPopupPageCount(driver: WebDriver): Promise<number> {
+  const count: number = await driver.executeScript(`
+    const table = document.getElementById(arguments[0]);
+    if (!table) return 1;
+    // Pager row: last row of the table, containing page links
+    const pagerRow = table.rows[table.rows.length - 1];
+    if (!pagerRow) return 1;
+    const links = pagerRow.querySelectorAll('a[href*="Page$"]');
+    let max = 1;
+    links.forEach(a => {
+      const m = a.getAttribute('href').match(/Page\\$(\\d+)/);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return max;
+  `, ADAPTER.popupTableId);
+  return count;
+}
+
+async function scrapeListing(driver: WebDriver): Promise<FirRecord[]> {
+  await driver.get(baseUrl() + ADAPTER.listingPath);
+  await driver.sleep(3_000);
+  await debugSnapshot(driver, "pending-inv-page");
+
+  // Set date range via JS (sendKeys mangles MaskedEdit fields)
+  try {
+    await driver.executeScript(
+      `function setMasked(inputId, csId, value) {
+         const el = document.getElementById(inputId); if (el) el.value = value;
+         const cs = document.getElementById(csId);   if (cs) cs.value = '';
+       }
+       setMasked(arguments[0], arguments[1], arguments[2]);
+       setMasked(arguments[3], arguments[4], arguments[5]);`,
+      ADAPTER.fromDateId, ADAPTER.fromDateClientStateId, ADAPTER.fromDateValue,
+      ADAPTER.toDateId,   ADAPTER.toDateClientStateId,   todayDDMMYYYY()
+    );
+  } catch (err) {
+    console.warn("[cctns-scraper] Could not set date range:", err);
+  }
+
+  await applyFilters(driver);
+
+  // Wait for UpdatePanel re-render after ddlReportType change, then JS-click
+  await driver.sleep(2_000);
+  const clicked: boolean = await driver.executeScript(
+    `const btn = document.getElementById(arguments[0]); if (btn) { btn.click(); return true; } return false;`,
+    ADAPTER.searchButtonId
+  );
+  if (!clicked) {
+    console.error("[cctns-scraper] Search button not found");
+    return [];
+  }
+
+  await driver.sleep(6_000);
+  await debugSnapshot(driver, "pending-inv-summary");
+
+  // Check the summary table appeared
+  const summaryFound: boolean = await driver.executeScript(
+    `return !!document.getElementById(arguments[0])`, ADAPTER.summaryTableId
+  );
+  if (!summaryFound) {
+    console.warn("[cctns-scraper] Summary table #gdvdata not found — form validation may have failed");
+    await debugSnapshot(driver, "pending-inv-no-summary");
+    return [];
+  }
+
+  // Click the pending-count link ("66") to trigger the detail PostBack
+  await driver.executeScript(
+    `__doPostBack(arguments[0], '')`, ADAPTER.pendingCountLinkPostback
+  );
+  await driver.sleep(5_000);
+  await debugSnapshot(driver, "pending-inv-popup");
+
+  // Check the popup table appeared
+  const popupFound: boolean = await driver.executeScript(
+    `return !!document.getElementById(arguments[0])`, ADAPTER.popupTableId
+  );
+  if (!popupFound) {
+    console.warn("[cctns-scraper] Popup table #gdvPopUP not found after clicking detail link");
+    await debugSnapshot(driver, "pending-inv-no-popup");
+    return [];
+  }
+
+  // Extract all pages
+  const allRecords: FirRecord[] = [];
+  const totalPages = await getPopupPageCount(driver);
+  console.log(`[cctns-scraper] Popup has ${totalPages} page(s)`);
+
+  const page1 = await extractPopupPage(driver);
+  allRecords.push(...page1);
+  console.log(`[cctns-scraper] Page 1: ${page1.length} records`);
+
+  for (let page = 2; page <= totalPages; page++) {
+    const prevCount = allRecords.length;
+    await driver.executeScript(
+      `__doPostBack(arguments[0], arguments[1])`, ADAPTER.popupTableId, `Page$${page}`
+    );
+    await driver.sleep(4_000);
+
+    const pageRecords = await extractPopupPage(driver);
+    allRecords.push(...pageRecords);
+    console.log(`[cctns-scraper] Page ${page}: ${pageRecords.length} records (total so far: ${allRecords.length})`);
+
+    if (pageRecords.length === 0 || allRecords.length === prevCount) break;
+  }
+
+  return allRecords;
+}
+
+async function storeRows(records: FirRecord[]): Promise<number> {
+  if (records.length === 0) return 0;
+
+  const scrapedAt = new Date().toISOString();
+  const ps = env.policeStationName || "Kumarganj";
+  const district = env.policeDistrictName || "Ayodhya";
+
+  const rows = records
+    .filter((r) => r.firNo)
+    .map((r) => ({
+      source: "cctns_portal",
+      external_reference: r.firNo,    // FIR No is unique per station
+      police_station: ps,
+      district,
+      io_name: r.ioNameParsed || null,
+      section: r.actSection || null,
+      complainant_name: null,
+      case_summary: r.actSection || null,
+      case_status: "pending",
+      registered_on: parseFirDate(r.firDate),
+      raw_data: r,
+      scraped_at: scrapedAt,
+    }));
+
+  if (rows.length === 0) return 0;
+
+  const { error } = await supabaseAdmin
+    .from("investigations")
+    .upsert(rows, { onConflict: "source,external_reference" });
+
+  if (error) {
+    console.error("[cctns-scraper] Failed to store rows:", error.message);
+    return 0;
+  }
+
+  return rows.length;
+}
+
+/**
+ * Logs into CCTNS, navigates Kumarganj PS pending-investigation report,
+ * clicks the detail link to get all 66 individual FIR records across all
+ * popup pages, and upserts them into `public.investigations`.
  */
 export async function runCctnsInvestigationsScrape(): Promise<CctnsScrapeResult> {
   const ranAt = new Date().toISOString();
 
   if (!isConfigured()) {
-    return {
-      ranAt,
-      scraped: 0,
-      stored: 0,
-      skipped: true,
-      reason: "CCTNS_PORTAL_URL / CCTNS_USERNAME / CCTNS_PASSWORD are not configured",
-    };
+    return { ranAt, scraped: 0, stored: 0, skipped: true, reason: "CCTNS credentials not configured" };
   }
 
   try {
-    return await withPage(async (page) => {
-      const loggedIn = await login(page);
-      if (!loggedIn) {
-        return { ranAt, scraped: 0, stored: 0, skipped: true, reason: "Login to the CCTNS portal failed" };
+    return await withDriver(async (driver) => {
+      if (!(await login(driver))) {
+        return { ranAt, scraped: 0, stored: 0, skipped: true, reason: "Login to CCTNS portal failed" };
       }
 
-      const rows = await scrapeListing(page);
-      const stored = await storeRows(rows);
-      return { ranAt, scraped: rows.length, stored, skipped: false };
+      const records = await scrapeListing(driver);
+      const stored = await storeRows(records);
+      return { ranAt, scraped: records.length, stored, skipped: false };
     });
   } catch (err) {
     console.error("[cctns-scraper] Scrape run failed:", err);
     return {
-      ranAt,
-      scraped: 0,
-      stored: 0,
-      skipped: true,
+      ranAt, scraped: 0, stored: 0, skipped: true,
       reason: err instanceof Error ? err.message : "Unknown scrape error",
     };
   }

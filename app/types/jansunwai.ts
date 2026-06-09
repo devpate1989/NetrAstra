@@ -1,6 +1,25 @@
 export type PetitionFormat = "pdf" | "text";
 export type JanSunwaiStatus = "pending" | "report_started" | "closed";
 
+export interface IgrsApplication {
+  id: string;
+  applicationNumber: string;
+  assignedIoId: string | null;
+  assignedIoName: string | null;
+  petitionerName: string | null;
+  petitionerMobile: string | null;
+  subject: string | null;
+  description: string | null;
+  status: JanSunwaiStatus;
+  scrapedAt: string | null;
+}
+
+export interface IoOfficer {
+  id: string;
+  fullName: string | null;
+  username: string;
+}
+
 export interface JanSunwaiSummary {
   id: string;
   applicationNumber: string;

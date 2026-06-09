@@ -36,6 +36,10 @@ export const env = {
   cctnsPortalUrl: optional("CCTNS_PORTAL_URL"),
   cctnsUsername: optional("CCTNS_USERNAME"),
   cctnsPassword: optional("CCTNS_PASSWORD"),
+  cctnsZoneId: optional("CCTNS_ZONE_ID"),
+  cctnsRangeId: optional("CCTNS_RANGE_ID"),
+  cctnsDistrictId: optional("CCTNS_DISTRICT_ID"),
+  cctnsPsId: optional("CCTNS_PS_ID"),
 
   jansunwaiPortalUrl: optional("JANSUNWAI_PORTAL_URL"),
   jansunwaiUsername: optional("JANSUNWAI_USERNAME"),

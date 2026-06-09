@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { createUser, listUsers, updateUser } from "../controllers/admin.controller";
+import { bulkCreateUsers, createUser, listUsers, resetUserPassword, updateUser } from "../controllers/admin.controller";
 
 export const adminRouter = Router();
 
@@ -8,5 +8,7 @@ export const adminRouter = Router();
 adminRouter.use(requireAuth, requireRole("admin"));
 
 adminRouter.post("/users", createUser);
+adminRouter.post("/users/bulk", bulkCreateUsers);
 adminRouter.get("/users", listUsers);
 adminRouter.patch("/users/:id", updateUser);
+adminRouter.patch("/users/:id/password", resetUserPassword);

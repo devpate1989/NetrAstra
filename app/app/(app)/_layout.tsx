@@ -50,6 +50,10 @@ export default function AppLayout() {
         options={{ title: "Jan Sunwai", href: isIo ? undefined : null, tabBarIcon: tabIcon("hearing") }}
       />
       <Tabs.Screen
+        name="igrs"
+        options={{ title: "IGRS", href: isShoOrAdmin ? undefined : null, tabBarIcon: tabIcon("assignment-ind") }}
+      />
+      <Tabs.Screen
         name="investigations"
         options={{ title: "Investigations", href: isShoOrAdmin ? undefined : null, tabBarIcon: tabIcon("manage-search") }}
       />
@@ -57,6 +61,13 @@ export default function AppLayout() {
         name="profile"
         options={{ title: "Profile", tabBarIcon: tabIcon("person") }}
       />
+
+      {/* Sub-routes — never show as tabs */}
+      <Tabs.Screen name="admin/users" options={{ href: null }} />
+      <Tabs.Screen name="igrs/allotment" options={{ href: null }} />
+      <Tabs.Screen name="jansunwai/[id]" options={{ href: null }} />
+      <Tabs.Screen name="reports/new" options={{ href: null }} />
+      <Tabs.Screen name="reports/[id]" options={{ href: null }} />
     </Tabs>
   );
 }

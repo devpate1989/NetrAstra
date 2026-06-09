@@ -83,6 +83,45 @@ No markdown, no extra text — just the JSON object.`,
   }
 }
 
+const _nameMatchCache = new Map<string, { result: string | null; expires: number }>();
+
+/**
+ * Uses Claude to find which CCTNS-scraped name best matches a profile name.
+ * CCTNS names are often all-caps ("ASHOK KUMAR PATHAK") while profiles may
+ * differ in capitalisation, initials, or spelling. Returns the best-matching
+ * CCTNS name from the list, or null if no plausible match is found.
+ * Results are cached in-process for 1 hour to avoid repeated API calls.
+ */
+export async function matchIoName(
+  profileName: string,
+  cctnsNames: string[]
+): Promise<string | null> {
+  if (!isAiConfigured() || !profileName.trim() || cctnsNames.length === 0) return null;
+
+  const cacheKey = profileName.trim().toLowerCase();
+  const cached = _nameMatchCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) return cached.result;
+
+  try {
+    const raw = await askClaude(
+      `You match Indian police officer names. Given a profile name and a list of CCTNS portal names, return the CCTNS name that refers to the same person (allowing for differences in caps, spelling, initials, or word order).
+Reply with ONLY the exact matching CCTNS name as it appears in the list, or the word null if no name is a plausible match for the same person.
+No explanation. No quotes. Just the name or the word null.`,
+      `Profile name: ${profileName.trim()}\n\nCCTNS names:\n${cctnsNames.join("\n")}`,
+      "claude-haiku-4-5-20251001",
+      100
+    );
+
+    const trimmed = raw.trim();
+    const result = trimmed === "null" || !cctnsNames.includes(trimmed) ? null : trimmed;
+    _nameMatchCache.set(cacheKey, { result, expires: Date.now() + 60 * 60 * 1_000 });
+    return result;
+  } catch (err) {
+    console.error("[ai] IO name matching failed:", err);
+    return null;
+  }
+}
+
 /**
  * Given a Jan Sunwai petition text, suggests a relevant IPC section and a
  * concise summary for the IO. Returns null if AI is not configured.

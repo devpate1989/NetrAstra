@@ -4,8 +4,8 @@ import { listInvestigations, refreshInvestigations, updateInvestigation } from "
 
 export const investigationsRouter = Router();
 
-investigationsRouter.use(requireAuth, requireRole("sho", "admin"));
+investigationsRouter.use(requireAuth);
 
 investigationsRouter.get("/", listInvestigations);
-investigationsRouter.post("/refresh", refreshInvestigations);
+investigationsRouter.post("/refresh", requireRole("sho", "admin"), refreshInvestigations);
 investigationsRouter.patch("/:id", requireRole("admin"), updateInvestigation);

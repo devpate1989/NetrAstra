@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "../config/supabase";
 import { asyncHandler, HttpError } from "../middleware/errorHandler";
 import { runCctnsInvestigationsScrape } from "../services/scraping/cctnsPortal.service";
+import { matchIoName } from "../services/ai.service";
 
 function paramId(req: Request): string {
   const value = req.params.id;
@@ -35,12 +36,32 @@ const SELECT_COLUMNS =
  * for SHO, editable (IO name & धारा/Section) for Admin. Reads from `investigations`,
  * which the scraper keeps in sync with the external CCTNS portal.
  */
-export const listInvestigations = asyncHandler(async (_req: Request, res: Response) => {
-  const { data, error } = await supabaseAdmin
+export const listInvestigations = asyncHandler(async (req: Request, res: Response) => {
+  const user = req.user!;
+
+  let query = supabaseAdmin
     .from("investigations")
     .select(SELECT_COLUMNS)
     .order("io_name", { ascending: true, nullsFirst: false })
     .order("registered_on", { ascending: false, nullsFirst: false });
+
+  if (user.role === "io") {
+    const { data: nameRows } = await supabaseAdmin
+      .from("investigations")
+      .select("io_name")
+      .not("io_name", "is", null);
+
+    const distinctNames = [...new Set((nameRows ?? []).map((r: any) => r.io_name as string).filter(Boolean))];
+    const matched = await matchIoName(user.fullName ?? "", distinctNames);
+
+    if (!matched) {
+      return res.json({ investigations: [], groupedByIo: [] });
+    }
+
+    query = query.eq("io_name", matched);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw new HttpError(400, error.message);

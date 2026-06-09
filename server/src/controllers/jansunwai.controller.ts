@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { z } from "zod";
 import { supabaseAdmin } from "../config/supabase";
 import { asyncHandler, HttpError } from "../middleware/errorHandler";
 import { JANSUNWAI_PETITIONS_BUCKET, runJanSunwaiScrape } from "../services/scraping/janSunwaiPortal.service";
@@ -25,6 +26,21 @@ function toSummaryDto(row: Record<string, any>) {
     status: row.status,
     petitionFormat: row.petition_format,
     reportId: row.report_id,
+    scrapedAt: row.scraped_at,
+  };
+}
+
+function toAllotmentDto(row: Record<string, any>) {
+  return {
+    id: row.id,
+    applicationNumber: row.application_number,
+    assignedIoId: row.assigned_io_id,
+    assignedIoName: row.assigned_io_name,
+    petitionerName: row.petitioner_name,
+    petitionerMobile: row.petitioner_mobile,
+    subject: row.subject,
+    description: row.description,
+    status: row.status,
     scrapedAt: row.scraped_at,
   };
 }
@@ -70,7 +86,7 @@ export const listPendingApplications = asyncHandler(async (req: Request, res: Re
   let query = supabaseAdmin
     .from("jansunwai_applications")
     .select(SELECT_COLUMNS)
-    .eq("status", "pending")
+    .in("status", ["pending", "report_started"])
     .order("scraped_at", { ascending: false });
 
   if (user.role === "io") {
@@ -111,4 +127,88 @@ export const getApplication = asyncHandler(async (req: Request, res: Response) =
 export const refreshApplications = asyncHandler(async (_req: Request, res: Response) => {
   const result = await runJanSunwaiScrape();
   res.json({ result });
+});
+
+/**
+ * All applications visible to SHO/Admin, with optional allotment filter.
+ * filter=all (default) | unallotted | allotted
+ */
+export const listAllApplications = asyncHandler(async (req: Request, res: Response) => {
+  const filter = (req.query.filter as string) ?? "all";
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const ALLOTMENT_COLUMNS =
+    "id, application_number, assigned_io_id, assigned_io_name, petitioner_name, " +
+    "petitioner_mobile, subject, description, status, scraped_at";
+
+  let query = supabaseAdmin
+    .from("jansunwai_applications")
+    .select(ALLOTMENT_COLUMNS, { count: "exact" })
+    .order("scraped_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (filter === "unallotted") query = query.is("assigned_io_id", null);
+  else if (filter === "allotted") query = query.not("assigned_io_id", "is", null);
+
+  const { data, error, count } = await query;
+  if (error) throw new HttpError(400, error.message);
+
+  res.json({
+    applications: (data ?? []).map(toAllotmentDto),
+    total: count ?? 0,
+    page,
+    limit,
+  });
+});
+
+/** IO officers list for the allotment dropdown. */
+export const listIoOfficers = asyncHandler(async (_req: Request, res: Response) => {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id, full_name, username")
+    .eq("role", "io")
+    .order("full_name");
+
+  if (error) throw new HttpError(400, error.message);
+
+  res.json({
+    officers: (data ?? []).map((p) => ({
+      id: p.id,
+      fullName: p.full_name as string | null,
+      username: p.username as string,
+    })),
+  });
+});
+
+const allotSchema = z.object({ ioId: z.string().uuid() });
+
+/** Allot a pending application to an IO officer. SHO/Admin only. */
+export const allotApplication = asyncHandler(async (req: Request, res: Response) => {
+  const id = paramId(req);
+  const { ioId } = allotSchema.parse(req.body);
+
+  const { data: io, error: ioError } = await supabaseAdmin
+    .from("profiles")
+    .select("id, full_name")
+    .eq("id", ioId)
+    .eq("role", "io")
+    .single();
+
+  if (ioError || !io) throw new HttpError(404, "IO officer not found");
+
+  const { data, error } = await supabaseAdmin
+    .from("jansunwai_applications")
+    .update({ assigned_io_id: ioId, assigned_io_name: io.full_name })
+    .eq("id", id)
+    .select(
+      "id, application_number, assigned_io_id, assigned_io_name, petitioner_name, " +
+        "petitioner_mobile, subject, description, status, scraped_at"
+    )
+    .single();
+
+  if (error || !data) throw new HttpError(404, "Application not found");
+
+  res.json({ application: toAllotmentDto(data as unknown as Record<string, any>) });
 });
