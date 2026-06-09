@@ -7,7 +7,22 @@ import { startScrapeScheduler } from "./services/scraping/scheduler";
 
 const app = express();
 
-app.use(cors({ origin: env.appUrl, credentials: true }));
+const allowedOrigins = env.appUrl
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // Allow requests with no origin (mobile apps, curl, Render health checks)
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      cb(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    credentials: true,
+  })
+);
 // Report attachments are uploaded as base64 JSON (see reports.controller.ts) —
 // base64 inflates payloads ~33%, so this must comfortably exceed MAX_UPLOAD_BYTES.
 app.use(express.json({ limit: "20mb" }));
