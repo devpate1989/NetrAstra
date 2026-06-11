@@ -33,48 +33,12 @@ jobs:
         run: npm ci
 
       - name: Export web build
-        id: export
-        continue-on-error: true
         working-directory: app
-        run: npx expo export --platform web 2>&1 | tee export.log
+        run: npx expo export --platform web
         env:
           EXPO_PUBLIC_SUPABASE_URL: https://xtxpxkeyvcgjlditzioy.supabase.co
           EXPO_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0eHB4a2V5dmNnamxkaXR6aW95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjY4NDYsImV4cCI6MjA5NjUwMjg0Nn0.TAGmSZTU0JqG9E5m8AdwRPp2_iOBOJ0neDdD3q3jKro
           EXPO_PUBLIC_API_BASE_URL: https://netrastra.onrender.com/api
-
-      - name: Diagnose build output
-        if: always()
-        working-directory: app
-        run: |
-          {
-            echo "=== export step outcome: ${{ steps.export.outcome }} ==="
-            echo "=== dist listing ==="
-            ls -la dist 2>&1 || echo "(no dist dir)"
-            echo "=== dist file count ==="
-            find dist -type f 2>/dev/null | wc -l
-            echo "=== dist size ==="
-            du -sh dist 2>/dev/null || echo "(no dist dir)"
-            echo "=== export.log (last 60 lines) ==="
-            tail -n 60 export.log 2>/dev/null || echo "(no export.log)"
-          } > diag.log
-          node -e '
-            const fs = require("fs");
-            const log = fs.readFileSync("diag.log", "utf8");
-            const tail = log.slice(-6000);
-            const chunkSize = 400;
-            for (let i = 0; i < tail.length; i += chunkSize) {
-              const chunk = tail.slice(i, i + chunkSize);
-              const encoded = chunk
-                .replace(/%/g, "%25")
-                .replace(/\r/g, "%0D")
-                .replace(/\n/g, "%0A");
-              console.log("::error::" + encoded);
-            }
-          '
-
-      - name: Fail if export failed
-        if: steps.export.outcome == 'failure'
-        run: exit 1
 
       - name: Add .nojekyll
         run: touch app/dist/.nojekyll
