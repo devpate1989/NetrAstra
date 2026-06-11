@@ -33,12 +33,34 @@ jobs:
         run: npm ci
 
       - name: Export web build
+        id: export
+        continue-on-error: true
         working-directory: app
-        run: npx expo export --platform web
+        run: npx expo export --platform web 2>&1 | tee export.log
         env:
           EXPO_PUBLIC_SUPABASE_URL: https://xtxpxkeyvcgjlditzioy.supabase.co
           EXPO_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0eHB4a2V5dmNnamxkaXR6aW95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjY4NDYsImV4cCI6MjA5NjUwMjg0Nn0.TAGmSZTU0JqG9E5m8AdwRPp2_iOBOJ0neDdD3q3jKro
           EXPO_PUBLIC_API_BASE_URL: https://netrastra.onrender.com/api
+
+      - name: Dump export log on failure
+        if: steps.export.outcome == 'failure'
+        working-directory: app
+        run: |
+          node -e '
+            const fs = require("fs");
+            const log = fs.readFileSync("export.log", "utf8");
+            const tail = log.slice(-4000);
+            const chunkSize = 400;
+            for (let i = 0; i < tail.length; i += chunkSize) {
+              const chunk = tail.slice(i, i + chunkSize);
+              const encoded = chunk
+                .replace(/%/g, "%25")
+                .replace(/\r/g, "%0D")
+                .replace(/\n/g, "%0A");
+              console.log("::error::" + encoded);
+            }
+          '
+          exit 1
 
       - name: Add .nojekyll
         run: touch app/dist/.nojekyll
