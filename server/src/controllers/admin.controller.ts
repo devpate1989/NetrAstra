@@ -126,7 +126,7 @@ export const resetUserPassword = asyncHandler(async (req: Request, res: Response
 });
 
 export const updateUser = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const input = updateUserSchema.parse(req.body);
 
   const updates: Record<string, unknown> = {};
