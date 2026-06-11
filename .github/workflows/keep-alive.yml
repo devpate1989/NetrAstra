@@ -1,0 +1,15 @@
+name: Keep Render server alive
+
+on:
+  schedule:
+    # Every 14 minutes — Render's free tier spins down after 15 min of
+    # inactivity, so this keeps the API warm and avoids cold-start timeouts.
+    - cron: "*/14 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: curl -fsS --max-time 60 https://netrastra.onrender.com/api/health
