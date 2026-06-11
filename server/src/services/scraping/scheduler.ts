@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { runCctnsInvestigationsScrape } from "./cctnsPortal.service";
-import { runJanSunwaiScrape } from "./janSunwaiPortal.service";
+import { runJanSunwaiReferenceSummaryScrape, runJanSunwaiScrape } from "./janSunwaiPortal.service";
 
 /**
  * Schedules the CCTNS-portal and Jan Sunwai scrape jobs (prompt.md modules 8 & 9)
@@ -29,6 +29,13 @@ export function startScrapeScheduler(): void {
       console.log(`[scheduler] Jan Sunwai scrape skipped: ${jansunwai.reason}`);
     } else {
       console.log(`[scheduler] Jan Sunwai scrape stored ${jansunwai.stored}/${jansunwai.scraped} applications`);
+    }
+
+    const referenceSummary = await runJanSunwaiReferenceSummaryScrape();
+    if (referenceSummary.skipped) {
+      console.log(`[scheduler] Jan Sunwai reference summary scrape skipped: ${referenceSummary.reason}`);
+    } else {
+      console.log(`[scheduler] Jan Sunwai reference summary scrape stored ${referenceSummary.stored} categories`);
     }
   });
 

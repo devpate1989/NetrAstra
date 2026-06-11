@@ -31,8 +31,10 @@ interface SyncState {
 const IDLE: SyncState = { loading: false, result: null, error: null };
 
 // Portal sync launches a headless browser server-side, which can take well
-// over the default API timeout — give it more room before giving up.
-const SYNC_TIMEOUT_MS = 120_000;
+// over the default API timeout — give it more room before giving up. The
+// Jan Sunwai sync now pages through all 14 संदर्भ प्रकार categories, so this
+// needs to comfortably cover a couple of minutes.
+const SYNC_TIMEOUT_MS = 180_000;
 
 export default function DashboardScreen() {
   const { user } = useAuth();

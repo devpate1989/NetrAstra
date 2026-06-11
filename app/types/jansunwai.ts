@@ -20,6 +20,16 @@ export interface IoOfficer {
   username: string;
 }
 
+/** Category-wise (संदर्भ प्रकार) breakdown of unmark / office-pending / total counts. */
+export interface ReferenceSummaryRow {
+  complaintTypeCode: number;
+  complaintTypeName: string;
+  unmarkCount: number;
+  officePendingCount: number;
+  totalPending: number;
+  scrapedAt: string | null;
+}
+
 export interface JanSunwaiSummary {
   id: string;
   applicationNumber: string;

@@ -21,7 +21,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadProfile() {
     try {
-      const profile = await apiRequest<AppUser>("/profile/me");
+      // Render's free-tier server can take 30-60s to wake from a cold start;
+      // the default 20s timeout was firing on the very first request after
+      // idle, leaving a valid session with `user: null`. Give this initial
+      // fetch more headroom so it succeeds instead of falling back to logged-out-looking state.
+      const profile = await apiRequest<AppUser>("/profile/me", { timeoutMs: 60_000 });
       setUser(profile);
     } catch (err) {
       console.warn("[auth] Failed to load profile:", err);

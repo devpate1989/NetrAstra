@@ -14,7 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "../../../components/Text";
 import { Banner } from "../../../components/Banner";
 import { apiRequest, ApiError } from "../../../lib/api";
-import type { IgrsApplication, IoOfficer } from "../../../types/jansunwai";
+import type { IgrsApplication, IoOfficer, ReferenceSummaryRow } from "../../../types/jansunwai";
 
 type Filter = "all" | "unallotted" | "allotted";
 
@@ -25,6 +25,15 @@ const FILTERS: { value: Filter; label: string }[] = [
 ];
 
 const PAGE_SIZE = 50;
+
+// The reference-summary sync submits 28 search forms (14 categories x 2 pages)
+// against the portal — give it more room than the default API timeout.
+const REFERENCE_SUMMARY_SYNC_TIMEOUT_MS = 180_000;
+
+// The applications sync now pages through all 14 संदर्भ प्रकार categories
+// (and their result pages) to scrape every pending आवेदन, not just one
+// category — give it the same headroom as the reference-summary sync.
+const APPLICATIONS_SYNC_TIMEOUT_MS = 180_000;
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -53,6 +62,13 @@ export default function IgrsAllotmentScreen() {
   const [selectedOfficer, setSelectedOfficer] = useState<IoOfficer | null>(null);
   const [allotting, setAllotting] = useState(false);
   const [allotError, setAllotError] = useState("");
+
+  // Reference-type (संदर्भ प्रकार) summary
+  const [refSummary, setRefSummary] = useState<ReferenceSummaryRow[]>([]);
+  const [refSummaryLoading, setRefSummaryLoading] = useState(true);
+  const [refSummarySyncing, setRefSummarySyncing] = useState(false);
+  const [refSummaryError, setRefSummaryError] = useState("");
+  const [refSummaryExpanded, setRefSummaryExpanded] = useState(false);
 
   const pageRef = useRef(1);
   const hasMore = apps.length < total;
@@ -92,11 +108,39 @@ export default function IgrsAllotmentScreen() {
     [] // eslint-disable-line
   );
 
+  const loadReferenceSummary = useCallback(async () => {
+    try {
+      const { summary } = await apiRequest<{ summary: ReferenceSummaryRow[] }>("/jansunwai/reference-summary");
+      setRefSummary(summary);
+    } catch (err) {
+      setRefSummaryError(err instanceof ApiError ? err.message : "Could not load reference summary.");
+    } finally {
+      setRefSummaryLoading(false);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       reload(filter);
-    }, [reload, filter])
+      loadReferenceSummary();
+    }, [reload, filter, loadReferenceSummary])
   );
+
+  const handleReferenceSummarySync = async () => {
+    setRefSummarySyncing(true);
+    setRefSummaryError("");
+    try {
+      await apiRequest("/jansunwai/reference-summary/refresh", {
+        method: "POST",
+        timeoutMs: REFERENCE_SUMMARY_SYNC_TIMEOUT_MS,
+      });
+      await loadReferenceSummary();
+    } catch (err) {
+      setRefSummaryError(err instanceof ApiError ? err.message : "Sync failed. Please try again.");
+    } finally {
+      setRefSummarySyncing(false);
+    }
+  };
 
   const handleFilterChange = (f: Filter) => {
     setFilter(f);
@@ -116,7 +160,7 @@ export default function IgrsAllotmentScreen() {
     setSyncing(true);
     setError("");
     try {
-      await apiRequest("/jansunwai/refresh", { method: "POST" });
+      await apiRequest("/jansunwai/refresh", { method: "POST", timeoutMs: APPLICATIONS_SYNC_TIMEOUT_MS });
       setLastSyncTime(new Date().toISOString());
       await reload(filter);
     } catch (err) {
@@ -325,6 +369,17 @@ export default function IgrsAllotmentScreen() {
           contentContainerStyle={styles.listContent}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.4}
+          ListHeaderComponent={
+            <ReferenceSummaryCard
+              rows={refSummary}
+              loading={refSummaryLoading}
+              syncing={refSummarySyncing}
+              error={refSummaryError}
+              expanded={refSummaryExpanded}
+              onToggleExpand={() => setRefSummaryExpanded((v) => !v)}
+              onSync={handleReferenceSummarySync}
+            />
+          }
           ListEmptyComponent={
             <View className="mt-16 items-center">
               <MaterialIcons name="assignment" size={48} color="#e2e8f0" />
@@ -463,6 +518,120 @@ export default function IgrsAllotmentScreen() {
   );
 }
 
+// ── संदर्भ प्रकार-wise summary card ─────────────────────────
+function ReferenceSummaryCard({
+  rows,
+  loading,
+  syncing,
+  error,
+  expanded,
+  onToggleExpand,
+  onSync,
+}: {
+  rows: ReferenceSummaryRow[];
+  loading: boolean;
+  syncing: boolean;
+  error: string;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onSync: () => void;
+}) {
+  const totals = rows.reduce(
+    (acc, r) => ({
+      unmark: acc.unmark + r.unmarkCount,
+      office: acc.office + r.officePendingCount,
+      total: acc.total + r.totalPending,
+    }),
+    { unmark: 0, office: 0, total: 0 }
+  );
+  const lastSync = rows.find((r) => r.scrapedAt)?.scrapedAt ?? null;
+  const visibleRows = expanded ? rows : rows.slice(0, 3);
+
+  return (
+    <View style={styles.summaryCard}>
+      <Pressable onPress={onToggleExpand} className="flex-row items-center justify-between px-4 py-3">
+        <View className="flex-1 pr-3">
+          <Text className="text-sm font-bold text-slate-900">संदर्भ प्रकार-वार लम्बित</Text>
+          <Text className="mt-0.5 text-xs text-slate-400">
+            {lastSync ? `Synced ${timeAgo(lastSync)}` : "Not synced yet"}
+            {rows.length > 0 ? ` · Total pending ${totals.total}` : ""}
+          </Text>
+        </View>
+        <MaterialIcons name={expanded ? "expand-less" : "expand-more"} size={22} color="#64748b" />
+      </Pressable>
+
+      {error ? (
+        <View className="px-4 pb-2">
+          <Text className="text-xs text-red-600">{error}</Text>
+        </View>
+      ) : null}
+
+      {loading ? (
+        <View className="items-center pb-4">
+          <ActivityIndicator size="small" color="#1d4ed8" />
+        </View>
+      ) : rows.length === 0 ? (
+        <View className="px-4 pb-4">
+          <Text className="text-xs text-slate-400">No data yet. Tap Sync to fetch from the portal.</Text>
+        </View>
+      ) : (
+        <View className="px-4 pb-2">
+          {/* Column headers */}
+          <View className="flex-row items-center border-b border-slate-100 pb-2">
+            <Text className="flex-1 text-[11px] font-semibold uppercase text-slate-400">संदर्भ प्रकार</Text>
+            <Text style={styles.summaryColHeader}>Unmark</Text>
+            <Text style={styles.summaryColHeader}>Office</Text>
+            <Text style={styles.summaryColHeader}>Total</Text>
+          </View>
+
+          {visibleRows.map((row) => (
+            <View key={row.complaintTypeCode} className="flex-row items-center border-b border-slate-50 py-2">
+              <Text className="flex-1 pr-2 text-xs text-slate-700" numberOfLines={2}>
+                {row.complaintTypeName}
+              </Text>
+              <Text style={styles.summaryColValue}>{row.unmarkCount}</Text>
+              <Text style={styles.summaryColValue}>{row.officePendingCount}</Text>
+              <Text style={[styles.summaryColValue, styles.summaryColTotal]}>{row.totalPending}</Text>
+            </View>
+          ))}
+
+          {!expanded && rows.length > 3 ? (
+            <Pressable onPress={onToggleExpand} className="items-center py-2">
+              <Text className="text-xs font-semibold text-brand-600">Show all {rows.length} categories</Text>
+            </Pressable>
+          ) : null}
+
+          {/* Totals row */}
+          <View className="flex-row items-center border-t border-slate-100 pt-2">
+            <Text className="flex-1 text-xs font-bold text-slate-900">Total</Text>
+            <Text style={[styles.summaryColValue, styles.summaryColBold]}>{totals.unmark}</Text>
+            <Text style={[styles.summaryColValue, styles.summaryColBold]}>{totals.office}</Text>
+            <Text style={[styles.summaryColValue, styles.summaryColBold, styles.summaryColTotal]}>
+              {totals.total}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Sync */}
+      <Pressable
+        onPress={onSync}
+        disabled={syncing}
+        className="flex-row items-center justify-center gap-1.5 border-t border-slate-100 py-2.5"
+      >
+        {syncing ? (
+          <ActivityIndicator size="small" color="#1d4ed8" />
+        ) : (
+          <MaterialIcons name="sync" size={14} color="#1d4ed8" />
+        )}
+        <Text className="text-xs font-semibold text-brand-600">
+          {syncing ? "Syncing…" : "Sync reference summary"}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
@@ -471,6 +640,36 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
     marginBottom: 12,
     overflow: "hidden",
+  },
+  summaryCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    marginBottom: 16,
+    overflow: "hidden",
+  },
+  summaryColHeader: {
+    width: 52,
+    textAlign: "right",
+    fontSize: 11,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    color: "#94a3b8",
+  },
+  summaryColValue: {
+    width: 52,
+    textAlign: "right",
+    fontSize: 12,
+    color: "#1e293b",
+  },
+  summaryColTotal: {
+    color: "#1d4ed8",
+    fontWeight: "700",
+  },
+  summaryColBold: {
+    fontWeight: "700",
+    color: "#0f172a",
   },
   cardHeader: {
     flexDirection: "row",

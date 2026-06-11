@@ -2,7 +2,11 @@ import { Request, Response } from "express";
 import { z } from "zod";
 import { supabaseAdmin } from "../config/supabase";
 import { asyncHandler, HttpError } from "../middleware/errorHandler";
-import { JANSUNWAI_PETITIONS_BUCKET, runJanSunwaiScrape } from "../services/scraping/janSunwaiPortal.service";
+import {
+  JANSUNWAI_PETITIONS_BUCKET,
+  runJanSunwaiReferenceSummaryScrape,
+  runJanSunwaiScrape,
+} from "../services/scraping/janSunwaiPortal.service";
 
 const SIGNED_URL_TTL_SECONDS = 60 * 10;
 
@@ -126,6 +130,38 @@ export const getApplication = asyncHandler(async (req: Request, res: Response) =
 /** On-demand re-scrape of the Jan Sunwai portal (in addition to the scheduled cron run). */
 export const refreshApplications = asyncHandler(async (_req: Request, res: Response) => {
   const result = await runJanSunwaiScrape();
+  res.json({ result });
+});
+
+function toReferenceSummaryDto(row: Record<string, any>) {
+  return {
+    complaintTypeCode: row.complaint_type_code,
+    complaintTypeName: row.complaint_type_name,
+    unmarkCount: row.unmark_count,
+    officePendingCount: row.office_pending_count,
+    totalPending: row.total_pending,
+    scrapedAt: row.scraped_at,
+  };
+}
+
+/**
+ * Category-wise (संदर्भ प्रकार) breakdown of unmarked references, references
+ * pending at office level, and their total — for the Admin/SHO portal.
+ */
+export const listReferenceSummary = asyncHandler(async (_req: Request, res: Response) => {
+  const { data, error } = await supabaseAdmin
+    .from("jansunwai_reference_summary")
+    .select("complaint_type_code, complaint_type_name, unmark_count, office_pending_count, total_pending, scraped_at")
+    .order("total_pending", { ascending: false });
+
+  if (error) throw new HttpError(400, error.message);
+
+  res.json({ summary: (data ?? []).map(toReferenceSummaryDto) });
+});
+
+/** On-demand re-scrape of the category-wise reference summary. */
+export const refreshReferenceSummary = asyncHandler(async (_req: Request, res: Response) => {
+  const result = await runJanSunwaiReferenceSummaryScrape();
   res.json({ result });
 });
 

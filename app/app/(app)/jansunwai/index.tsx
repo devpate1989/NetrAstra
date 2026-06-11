@@ -16,6 +16,10 @@ const STATUS_LABELS: Record<string, string> = {
   closed: "Closed",
 };
 
+// The portal sync pages through all 14 संदर्भ प्रकार categories server-side,
+// which can take well over the default API timeout.
+const SYNC_TIMEOUT_MS = 180_000;
+
 export default function JanSunwaiListScreen() {
   const [applications, setApplications] = useState<JanSunwaiSummary[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +51,10 @@ export default function JanSunwaiListScreen() {
     setError("");
     setNotice("");
     try {
-      const { result } = await apiRequest<{ result: ScrapeRunResult }>("/jansunwai/refresh", { method: "POST" });
+      const { result } = await apiRequest<{ result: ScrapeRunResult }>("/jansunwai/refresh", {
+        method: "POST",
+        timeoutMs: SYNC_TIMEOUT_MS,
+      });
       if (result.skipped) {
         setNotice(result.reason || "The Jan Sunwai portal is not configured yet.");
       } else {

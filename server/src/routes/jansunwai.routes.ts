@@ -7,7 +7,9 @@ import {
   listAllApplications,
   listIoOfficers,
   listPendingApplications,
+  listReferenceSummary,
   refreshApplications,
+  refreshReferenceSummary,
 } from "../controllers/jansunwai.controller";
 
 export const jansunwaiRouter = Router();
@@ -21,6 +23,15 @@ jansunwaiRouter.get("/pending", listPendingApplications);
 jansunwaiRouter.get("/all", requireRole("sho", "admin"), listAllApplications);
 jansunwaiRouter.get("/officers", requireRole("sho", "admin"), listIoOfficers);
 jansunwaiRouter.patch("/:id/allot", requireRole("sho", "admin"), allotApplication);
+
+// SHO/Admin — category-wise (संदर्भ प्रकार) unmark / office-pending / total summary
+jansunwaiRouter.get("/reference-summary", requireRole("sho", "admin"), listReferenceSummary);
+jansunwaiRouter.post(
+  "/reference-summary/refresh",
+  requireRole("sho", "admin"),
+  scrapeRateLimiter,
+  refreshReferenceSummary
+);
 
 // Shared
 jansunwaiRouter.post("/refresh", scrapeRateLimiter, refreshApplications);
