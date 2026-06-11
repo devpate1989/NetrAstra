@@ -50,7 +50,7 @@ export default function AppLayout() {
         options={{ title: "Jan Sunwai", href: isIo ? undefined : null, tabBarIcon: tabIcon("hearing") }}
       />
       <Tabs.Screen
-        name="igrs"
+        name="igrs/allotment"
         options={{ title: "IGRS", href: isShoOrAdmin ? undefined : null, tabBarIcon: tabIcon("assignment-ind") }}
       />
       <Tabs.Screen
@@ -76,7 +76,6 @@ export default function AppLayout() {
       <Tabs.Screen name="directory/emergency" options={{ href: null }} />
       <Tabs.Screen name="directory/police-station" options={{ href: null }} />
       <Tabs.Screen name="directory/chowki" options={{ href: null }} />
-      <Tabs.Screen name="igrs/allotment" options={{ href: null }} />
       <Tabs.Screen name="jansunwai/[id]" options={{ href: null }} />
       <Tabs.Screen name="legal/[id]" options={{ href: null }} />
       <Tabs.Screen name="legal/history" options={{ href: null }} />
