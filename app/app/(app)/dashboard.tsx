@@ -7,7 +7,7 @@ import { ScreenContainer } from "../../components/ScreenContainer";
 import { Card } from "../../components/Card";
 import { Avatar } from "../../components/Avatar";
 import { useAuth } from "../../context/AuthContext";
-import { apiRequest, ApiError } from "../../lib/api";
+import { apiRequest } from "../../lib/api";
 
 const ROLE_LABELS: Record<string, string> = {
   io: "Investigating Officer",
@@ -29,6 +29,10 @@ interface SyncState {
 }
 
 const IDLE: SyncState = { loading: false, result: null, error: null };
+
+// Portal sync launches a headless browser server-side, which can take well
+// over the default API timeout — give it more room before giving up.
+const SYNC_TIMEOUT_MS = 120_000;
 
 export default function DashboardScreen() {
   const { user } = useAuth();
@@ -57,7 +61,7 @@ export default function DashboardScreen() {
     try {
       const { result } = await apiRequest<{ result: { scraped: number; stored: number; skipped: boolean; reason?: string } }>(
         "/jansunwai/refresh",
-        { method: "POST" }
+        { method: "POST", timeoutMs: SYNC_TIMEOUT_MS }
       );
       setIgrsSync({
         loading: false,
@@ -67,7 +71,7 @@ export default function DashboardScreen() {
         error: null,
       });
     } catch (err) {
-      setIgrsSync({ loading: false, result: null, error: err instanceof ApiError ? err.message : "Sync failed" });
+      setIgrsSync({ loading: false, result: null, error: err instanceof Error ? err.message : "Sync failed" });
     }
   }
 
@@ -76,7 +80,7 @@ export default function DashboardScreen() {
     try {
       const { result } = await apiRequest<{ result: { scraped: number; stored: number; skipped: boolean; reason?: string } }>(
         "/investigations/refresh",
-        { method: "POST" }
+        { method: "POST", timeoutMs: SYNC_TIMEOUT_MS }
       );
       setCctnsSync({
         loading: false,
@@ -86,7 +90,7 @@ export default function DashboardScreen() {
         error: null,
       });
     } catch (err) {
-      setCctnsSync({ loading: false, result: null, error: err instanceof ApiError ? err.message : "Sync failed" });
+      setCctnsSync({ loading: false, result: null, error: err instanceof Error ? err.message : "Sync failed" });
     }
   }
 
