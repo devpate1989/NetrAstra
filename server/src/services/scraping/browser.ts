@@ -3,11 +3,18 @@ import path from "path";
 import { Builder, By, until, WebDriver, WebElement } from "selenium-webdriver";
 import { Options as ChromeOptions, ServiceBuilder } from "selenium-webdriver/chrome";
 
+interface ChromePaths {
+  driverPath: string;
+  browserPath: string;
+}
+
 /**
- * Resolves the ChromeDriver path via the Selenium Manager binary bundled with
- * selenium-webdriver, bypassing any stale `chromedriver` on the system PATH.
+ * Resolves the ChromeDriver and Chrome browser paths via the Selenium Manager
+ * binary bundled with selenium-webdriver, bypassing any stale `chromedriver`
+ * on the system PATH. On hosts with no system Chrome (e.g. Render), Selenium
+ * Manager downloads a matching "Chrome for Testing" build and reports its path.
  */
-function resolveChromedriverPath(): string {
+function resolveChromePaths(): ChromePaths {
   const smDir = path.join(path.dirname(require.resolve("selenium-webdriver")), "bin");
   const smBin =
     process.platform === "win32"
@@ -17,21 +24,24 @@ function resolveChromedriverPath(): string {
       : path.join(smDir, "linux", "selenium-manager");
 
   const raw = execFileSync(smBin, ["--browser", "chrome", "--skip-driver-in-path", "--output", "json"]).toString();
-  const result = JSON.parse(raw) as { result: { driver_path: string } };
-  return result.result.driver_path;
+  const result = JSON.parse(raw) as { result: { driver_path: string; browser_path: string } };
+  return { driverPath: result.result.driver_path, browserPath: result.result.browser_path };
 }
 
-let _chromedriverPath: string | null = null;
+let _chromePaths: ChromePaths | null = null;
 
-function getChromedriverPath(): string {
-  if (!_chromedriverPath) {
-    _chromedriverPath = resolveChromedriverPath();
-    console.log(`[browser] Using ChromeDriver: ${_chromedriverPath}`);
+function getChromePaths(): ChromePaths {
+  if (!_chromePaths) {
+    _chromePaths = resolveChromePaths();
+    console.log(`[browser] Using ChromeDriver: ${_chromePaths.driverPath}`);
+    console.log(`[browser] Using Chrome binary: ${_chromePaths.browserPath}`);
   }
-  return _chromedriverPath;
+  return _chromePaths;
 }
 
 export async function launchDriver(): Promise<WebDriver> {
+  const { driverPath, browserPath } = getChromePaths();
+
   const options = new ChromeOptions();
   options.addArguments(
     "--headless=new",
@@ -41,11 +51,14 @@ export async function launchDriver(): Promise<WebDriver> {
     "--window-size=1366,900",
     "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
   );
+  if (browserPath) {
+    options.setChromeBinaryPath(browserPath);
+  }
 
   return new Builder()
     .forBrowser("chrome")
     .setChromeOptions(options)
-    .setChromeService(new ServiceBuilder(getChromedriverPath()))
+    .setChromeService(new ServiceBuilder(driverPath))
     .build();
 }
 
