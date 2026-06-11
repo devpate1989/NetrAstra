@@ -8,7 +8,7 @@ import { PrimaryButton } from "../../components/PrimaryButton";
 import { apiRequest } from "../../lib/api";
 
 export default function ForgotPasswordScreen() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -17,8 +17,8 @@ export default function ForgotPasswordScreen() {
     setError("");
     setSuccess("");
 
-    if (!email.trim()) {
-      setError("Please enter the email associated with your account.");
+    if (!username.trim()) {
+      setError("Please enter your username.");
       return;
     }
 
@@ -27,7 +27,7 @@ export default function ForgotPasswordScreen() {
       const result = await apiRequest<{ message: string }>("/auth/forgot-password", {
         method: "POST",
         skipAuth: true,
-        body: { email: email.trim() },
+        body: { username: username.trim() },
       });
       setSuccess(result.message);
     } catch (err: any) {
@@ -47,7 +47,7 @@ export default function ForgotPasswordScreen() {
           <View className="mb-6 items-center">
             <Text className="text-2xl font-bold text-slate-900">Forgot your password?</Text>
             <Text className="mt-1 text-center text-sm text-slate-500">
-              Enter your account email and we&apos;ll send you a reset link.
+              Enter your username and we&apos;ll send a reset link to the email on file.
             </Text>
           </View>
 
@@ -55,12 +55,11 @@ export default function ForgotPasswordScreen() {
           <Banner message={success} variant="success" />
 
           <FormField
-            label="Email"
-            placeholder="you@police.gov.in"
+            label="Username"
+            placeholder="e.g. rajesh.kumar"
             autoCapitalize="none"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
+            value={username}
+            onChangeText={setUsername}
           />
 
           <PrimaryButton label="Send reset link" onPress={handleSubmit} loading={loading} />

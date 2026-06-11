@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { ZodError } from "zod";
 
 export class HttpError extends Error {
   status: number;
@@ -19,6 +20,12 @@ export function notFoundHandler(req: Request, res: Response) {
 export function errorHandler(err: unknown, req: Request, res: Response, next: NextFunction) {
   if (err instanceof HttpError) {
     return res.status(err.status).json({ error: err.message, details: err.details });
+  }
+
+  // Zod validation errors thrown directly from schema.parse() — surface as 400
+  // with field-level issues, not a generic 500.
+  if (err instanceof ZodError) {
+    return res.status(400).json({ error: "Invalid request data", details: err.issues });
   }
 
   const message = err instanceof Error ? err.message : "Internal server error";

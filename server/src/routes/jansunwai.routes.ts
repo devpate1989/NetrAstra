@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { scrapeRateLimiter } from "../middleware/rateLimit";
 import {
   allotApplication,
   getApplication,
@@ -22,5 +23,5 @@ jansunwaiRouter.get("/officers", requireRole("sho", "admin"), listIoOfficers);
 jansunwaiRouter.patch("/:id/allot", requireRole("sho", "admin"), allotApplication);
 
 // Shared
-jansunwaiRouter.post("/refresh", refreshApplications);
+jansunwaiRouter.post("/refresh", scrapeRateLimiter, refreshApplications);
 jansunwaiRouter.get("/:id", getApplication);

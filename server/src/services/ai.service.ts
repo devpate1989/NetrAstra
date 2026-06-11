@@ -14,7 +14,7 @@ function getClient(): Anthropic {
 }
 
 // Claude sometimes wraps JSON in ```json ... ``` fences even when asked not to.
-function stripFences(text: string): string {
+export function stripFences(text: string): string {
   return text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
 }
 

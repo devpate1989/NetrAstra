@@ -21,9 +21,6 @@ export const env = {
   appUrl: optional("APP_URL", "http://localhost:3000"),
   apiBaseUrl: optional("API_BASE_URL", "http://localhost:4000"),
 
-  jwtSecret: required("JWT_SECRET"),
-  sessionSecret: optional("SESSION_SECRET"),
-
   supabaseUrl: required("SUPABASE_URL"),
   supabaseAnonKey: required("SUPABASE_ANON_KEY"),
   supabaseServiceRoleKey: required("SUPABASE_SERVICE_ROLE_KEY"),

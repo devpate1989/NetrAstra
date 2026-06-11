@@ -22,7 +22,7 @@ export function Banner({ message, variant = "info" }: BannerProps) {
   if (!message) return null;
 
   return (
-    <View className={`mb-4 w-full rounded-lg border px-4 py-3 ${VARIANT_STYLES[variant]}`}>
+    <View className={`mb-4 w-full rounded-xl border px-4 py-3 ${VARIANT_STYLES[variant]}`}>
       <Text className={`text-sm ${TEXT_STYLES[variant]}`}>{message}</Text>
     </View>
   );

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import { Text } from "../../components/Text";
 import { useFocusEffect } from "expo-router";
@@ -34,7 +34,7 @@ interface EditState {
   section: string;
 }
 
-function CaseRow({
+const CaseRow = memo(function CaseRow({
   item,
   canEdit,
   saving,
@@ -118,7 +118,7 @@ function CaseRow({
       </View>
     </View>
   );
-}
+});
 
 export default function InvestigationsScreen() {
   const { user } = useAuth();
@@ -169,7 +169,7 @@ export default function InvestigationsScreen() {
     }
   };
 
-  const handleSave = async (id: string, changes: EditState) => {
+  const handleSave = useCallback(async (id: string, changes: EditState) => {
     setSavingId(id);
     setError("");
     try {
@@ -183,7 +183,7 @@ export default function InvestigationsScreen() {
     } finally {
       setSavingId(null);
     }
-  };
+  }, [load]);
 
   const totalCases = groups?.reduce((sum, g) => sum + g.cases.length, 0) ?? 0;
 

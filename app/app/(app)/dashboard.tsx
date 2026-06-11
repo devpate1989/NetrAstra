@@ -5,6 +5,7 @@ import { Text } from "../../components/Text";
 import { router, useFocusEffect } from "expo-router";
 import { ScreenContainer } from "../../components/ScreenContainer";
 import { Card } from "../../components/Card";
+import { Avatar } from "../../components/Avatar";
 import { useAuth } from "../../context/AuthContext";
 import { apiRequest, ApiError } from "../../lib/api";
 
@@ -13,6 +14,13 @@ const ROLE_LABELS: Record<string, string> = {
   sho: "SHO",
   admin: "Admin",
 };
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
 
 interface SyncState {
   loading: boolean;
@@ -83,16 +91,41 @@ export default function DashboardScreen() {
   }
 
   return (
-    <ScreenContainer
-      title={`Welcome${user ? `, ${user.fullName}` : ""}`}
-      subtitle={
-        user
-          ? `${roleLabel}${user.policeStation ? ` · थाना ${user.policeStation}` : ""}${
-              user.district ? ` · जनपद ${user.district}` : ""
-            }`
-          : undefined
-      }
-    >
+    <ScreenContainer>
+      {/* ── Greeting header ─────────────────────────────────── */}
+      <View className="mb-6 flex-row items-center justify-between rounded-2xl bg-brand-600 p-5 shadow-sm">
+        <View className="flex-1 pr-4">
+          <Text className="text-sm font-medium text-brand-100">{getGreeting()}</Text>
+          <Text className="mt-1 text-2xl font-bold text-white" numberOfLines={1}>
+            {user ? `Hello, ${user.fullName.split(" ")[0]}!` : "Welcome"}
+          </Text>
+          {user && (
+            <View className="mt-3 flex-row flex-wrap items-center gap-2">
+              <View className="rounded-full bg-white/15 px-3 py-1">
+                <Text className="text-xs font-semibold text-white">{roleLabel}</Text>
+              </View>
+              {(user.policeStation || user.district) && (
+                <View className="flex-row items-center gap-1">
+                  <MaterialIcons name="location-on" size={14} color="#bfdbfe" />
+                  <Text className="text-xs font-medium text-brand-100">
+                    {[user.policeStation && `थाना ${user.policeStation}`, user.district && `जनपद ${user.district}`]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+        <Avatar
+          name={user?.fullName ?? user?.email}
+          avatarUrl={user?.avatarUrl}
+          size={56}
+          bgClassName="bg-white/20"
+          textClassName="text-white"
+        />
+      </View>
+
       {/* ── IO section ──────────────────────────────────────── */}
       {user?.role === "io" && (
         <View>
@@ -113,6 +146,7 @@ export default function DashboardScreen() {
             description="View pending आवेदन संख्या assigned to you, read applications, and start inquiry reports."
             meta="Open"
             icon="hearing"
+            tone="amber"
             count={jansunwaiCount}
             countColor="blue"
             onPress={() => router.push("/(app)/jansunwai")}
@@ -122,6 +156,7 @@ export default function DashboardScreen() {
             description="Fill, submit, and download point-wise inquiry reports (जाँच आख्या)."
             meta="Open"
             icon="description"
+            tone="emerald"
             onPress={() => router.push("/(app)/reports")}
           />
           <Card
@@ -129,6 +164,7 @@ export default function DashboardScreen() {
             description="Begin a fresh 23-point inquiry report from scratch."
             meta="Create"
             icon="add-circle"
+            tone="purple"
             onPress={() => router.push("/(app)/reports/new")}
           />
         </View>
@@ -145,6 +181,7 @@ export default function DashboardScreen() {
             description="View pending IGRS applications and allot each one to an Investigating Officer."
             meta="Open"
             icon="assignment-ind"
+            tone="amber"
             onPress={() => router.push("/(app)/igrs/allotment")}
           />
           <Card
@@ -152,6 +189,7 @@ export default function DashboardScreen() {
             description="CCTNS-tracked pending investigations for your station, grouped by Investigating Officer."
             meta={user.role === "admin" ? "View & Edit" : "View"}
             icon="manage-search"
+            tone="blue"
             onPress={() => router.push("/(app)/investigations")}
           />
           {user.role === "admin" && (
@@ -160,7 +198,18 @@ export default function DashboardScreen() {
               description="Promote or change roles for IO / SHO / Admin accounts."
               meta="Open"
               icon="manage-accounts"
+              tone="purple"
               onPress={() => router.push("/(app)/admin/users")}
+            />
+          )}
+          {user.role === "admin" && (
+            <Card
+              title="Audit Log"
+              description="Review sensitive admin and report actions for accountability."
+              meta="Open"
+              icon="history"
+              tone="rose"
+              onPress={() => router.push("/(app)/admin/audit-log")}
             />
           )}
 
@@ -197,6 +246,53 @@ export default function DashboardScreen() {
         </View>
       )}
 
+      {/* ── Resources ───────────────────────────────────────── */}
+      <View>
+        <Text className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Resources
+        </Text>
+        <Card
+          title="Scan Documents"
+          description="Scan or upload a complaint, FIR, notice, or court document and extract its text with OCR."
+          meta="Open"
+          icon="document-scanner"
+          tone="purple"
+          onPress={() => router.push("/(app)/scan")}
+        />
+        <Card
+          title="Legal Analysis"
+          description="Get AI-assisted BNS/BNSS/BSA section analysis from a document or pasted text, and look up IPC ↔ BNS section mappings."
+          meta="Open"
+          icon="gavel"
+          tone="indigo"
+          onPress={() => router.push("/(app)/legal")}
+        />
+        <Card
+          title="Station Directory"
+          description="Search officers at your station by name or role, and call them directly."
+          meta="View"
+          icon="groups"
+          tone="teal"
+          onPress={() => router.push("/(app)/directory/police-station")}
+        />
+        <Card
+          title="Beat / Chowki Directory"
+          description="चौकी/हल्का-wise villages and posted Sub-Inspectors, plus the Thana staff roster."
+          meta="View"
+          icon="map"
+          tone="amber"
+          onPress={() => router.push("/(app)/directory/chowki")}
+        />
+        <Card
+          title="Emergency Numbers"
+          description="National helplines — police, fire, ambulance, women & child helplines, and cyber crime."
+          meta="View"
+          icon="emergency"
+          tone="rose"
+          onPress={() => router.push("/(app)/directory/emergency")}
+        />
+      </View>
+
       {/* ── Account ─────────────────────────────────────────── */}
       <View className="mt-2">
         <Text className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -207,6 +303,7 @@ export default function DashboardScreen() {
           description="View and update your personal details, station, and password."
           meta="Open"
           icon="account-circle"
+          tone="slate"
           onPress={() => router.push("/(app)/profile")}
         />
       </View>

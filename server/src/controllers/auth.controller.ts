@@ -7,10 +7,15 @@ import {
   sendPasswordChangedEmail,
   sendPasswordResetEmail,
 } from "../services/email.service";
+import { logAudit } from "../services/audit.service";
 
 const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
+});
+
+const forgotPasswordSchema = z.object({
+  username: z.string().min(1),
 });
 
 const resetPasswordSchema = z.object({
@@ -63,6 +68,35 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+// Self-service: emails a password-reset link for the given username, if the
+// account exists. Always responds with the same generic message so this
+// endpoint can't be used to enumerate valid usernames.
+export const forgotPassword = asyncHandler(async (req: Request, res: Response) => {
+  const { username } = forgotPasswordSchema.parse(req.body);
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("email")
+    .eq("username", username.trim().toLowerCase())
+    .single();
+
+  if (profile?.email) {
+    const { data: link } = await supabaseAdmin.auth.admin.generateLink({
+      type: "recovery",
+      email: profile.email,
+      options: { redirectTo: `${env.appUrl}/reset-password` },
+    });
+
+    if (link?.properties?.action_link) {
+      await sendPasswordResetEmail(profile.email, link.properties.action_link).catch((err) => {
+        console.error("[auth] Could not send password reset email:", err);
+      });
+    }
+  }
+
+  res.json({ message: "If an account exists for that username, a password reset link has been sent." });
+});
+
 export const resetPassword = asyncHandler(async (req: Request, res: Response) => {
   const input = resetPasswordSchema.parse(req.body);
 
@@ -82,6 +116,11 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
   if (userData.user.email) {
     await sendPasswordChangedEmail(userData.user.email).catch(() => null);
   }
+
+  await logAudit({
+    actor: { id: userData.user.id, email: userData.user.email ?? "" },
+    action: "auth.reset_password",
+  });
 
   res.json({ message: "Your password has been reset. You can now log in with your new password." });
 });
@@ -110,6 +149,11 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
 
   await sendPasswordChangedEmail(req.user.email).catch(() => null);
 
+  await logAudit({
+    actor: req.user,
+    action: "auth.change_password",
+  });
+
   res.json({ message: "Your password has been updated." });
 });
 
@@ -136,6 +180,13 @@ export const adminResetPassword = asyncHandler(async (req: Request, res: Respons
   if (error || !link?.properties?.action_link) {
     throw new HttpError(500, "Could not generate reset link");
   }
+
+  await logAudit({
+    actor: req.user!,
+    action: "auth.admin_generate_reset_link",
+    targetTable: "profiles",
+    details: { username: username.trim().toLowerCase() },
+  });
 
   res.json({ resetLink: link.properties.action_link });
 });

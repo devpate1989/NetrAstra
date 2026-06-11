@@ -5,6 +5,7 @@ import { env } from "../config/env";
 import { asyncHandler, HttpError } from "../middleware/errorHandler";
 import { sendVerificationEmail } from "../services/email.service";
 import { parseExcelUsers } from "../services/bulkImport.service";
+import { logAudit } from "../services/audit.service";
 
 const ROLES = ["io", "sho", "admin"] as const;
 
@@ -81,6 +82,14 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
     .eq("id", created.user.id)
     .single();
 
+  await logAudit({
+    actor: req.user!,
+    action: "user.create",
+    targetTable: "profiles",
+    targetId: created.user.id,
+    details: { username, role: input.role, fullName: input.fullName },
+  });
+
   res.status(201).json({ user: profile ? toUserDto(profile) : { id: created.user.id } });
 });
 
@@ -106,6 +115,13 @@ export const resetUserPassword = asyncHandler(async (req: Request, res: Response
   const { error } = await supabaseAdmin.auth.admin.updateUserById(id, { password });
   if (error) throw new HttpError(400, error.message);
 
+  await logAudit({
+    actor: req.user!,
+    action: "user.reset_password",
+    targetTable: "profiles",
+    targetId: id,
+  });
+
   res.json({ ok: true });
 });
 
@@ -126,6 +142,14 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     .single();
 
   if (error || !data) throw new HttpError(400, error?.message ?? "Could not update this user");
+
+  await logAudit({
+    actor: req.user!,
+    action: "user.update",
+    targetTable: "profiles",
+    targetId: id,
+    details: updates,
+  });
 
   res.json({ user: toUserDto(data) });
 });
@@ -218,5 +242,47 @@ export const bulkCreateUsers = asyncHandler(async (req: Request, res: Response) 
   const failed = results.filter((r) => r.status === "failed").length;
   const skipped = results.filter((r) => r.status === "skipped").length;
 
+  await logAudit({
+    actor: req.user!,
+    action: "user.bulk_create",
+    targetTable: "profiles",
+    details: { fileName, totalRows: rows.length, created, failed, skipped },
+  });
+
   res.status(201).json({ totalRows: rows.length, created, failed, skipped, results });
+});
+
+// ── Audit log ────────────────────────────────────────────────────────────────
+
+function toAuditLogDto(row: Record<string, any>) {
+  return {
+    id: row.id,
+    actorUsername: row.actor_username,
+    action: row.action,
+    targetTable: row.target_table,
+    targetId: row.target_id,
+    details: row.details,
+    createdAt: row.created_at,
+  };
+}
+
+export const listAuditLog = asyncHandler(async (req: Request, res: Response) => {
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const { data, error, count } = await supabaseAdmin
+    .from("audit_log")
+    .select("id, actor_username, action, target_table, target_id, details, created_at", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) throw new HttpError(400, error.message);
+
+  res.json({
+    entries: (data ?? []).map(toAuditLogDto),
+    total: count ?? 0,
+    page,
+    limit,
+  });
 });

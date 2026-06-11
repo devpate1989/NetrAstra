@@ -58,16 +58,33 @@ export default function AppLayout() {
         options={{ title: "Investigations", href: isShoOrAdmin ? undefined : null, tabBarIcon: tabIcon("manage-search") }}
       />
       <Tabs.Screen
+        name="scan"
+        options={{ title: "Scan", tabBarIcon: tabIcon("document-scanner") }}
+      />
+      <Tabs.Screen
+        name="legal"
+        options={{ title: "Legal", tabBarIcon: tabIcon("gavel") }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{ title: "Profile", tabBarIcon: tabIcon("person") }}
       />
 
       {/* Sub-routes — never show as tabs */}
       <Tabs.Screen name="admin/users" options={{ href: null }} />
+      <Tabs.Screen name="admin/audit-log" options={{ href: null }} />
+      <Tabs.Screen name="directory/emergency" options={{ href: null }} />
+      <Tabs.Screen name="directory/police-station" options={{ href: null }} />
+      <Tabs.Screen name="directory/chowki" options={{ href: null }} />
       <Tabs.Screen name="igrs/allotment" options={{ href: null }} />
       <Tabs.Screen name="jansunwai/[id]" options={{ href: null }} />
+      <Tabs.Screen name="legal/[id]" options={{ href: null }} />
+      <Tabs.Screen name="legal/history" options={{ href: null }} />
+      <Tabs.Screen name="legal/bns-lookup" options={{ href: null }} />
       <Tabs.Screen name="reports/new" options={{ href: null }} />
       <Tabs.Screen name="reports/[id]" options={{ href: null }} />
+      <Tabs.Screen name="scan/[id]" options={{ href: null }} />
+      <Tabs.Screen name="scan/history" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { bulkCreateUsers, createUser, listUsers, resetUserPassword, updateUser } from "../controllers/admin.controller";
+import { bulkCreateUsers, createUser, listAuditLog, listUsers, resetUserPassword, updateUser } from "../controllers/admin.controller";
 
 export const adminRouter = Router();
 
@@ -12,3 +12,4 @@ adminRouter.post("/users/bulk", bulkCreateUsers);
 adminRouter.get("/users", listUsers);
 adminRouter.patch("/users/:id", updateUser);
 adminRouter.patch("/users/:id/password", resetUserPassword);
+adminRouter.get("/audit-log", listAuditLog);

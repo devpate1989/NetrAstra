@@ -1,6 +1,9 @@
+import { memo } from "react";
 import { Pressable, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Text } from "./Text";
+
+export type CardTone = "blue" | "purple" | "teal" | "amber" | "rose" | "emerald" | "indigo" | "slate";
 
 interface CardProps {
   title: string;
@@ -9,6 +12,8 @@ interface CardProps {
   count?: number | null;
   countColor?: "red" | "orange" | "blue";
   icon?: React.ComponentProps<typeof MaterialIcons>["name"];
+  /** Accent color for the icon badge — lets related cards (scan, legal, directory, etc.) stand apart visually. */
+  tone?: CardTone;
   onPress?: () => void;
 }
 
@@ -18,19 +23,31 @@ const COUNT_STYLES: Record<NonNullable<CardProps["countColor"]>, { bg: string; t
   blue:   { bg: "#1d4ed8", text: "#ffffff" },
 };
 
-export function Card({ title, description, meta, count, countColor = "blue", icon, onPress }: CardProps) {
+const TONE_STYLES: Record<CardTone, { bg: string; icon: string }> = {
+  blue:    { bg: "bg-brand-50",   icon: "#1d4ed8" },
+  purple:  { bg: "bg-violet-50",  icon: "#7c3aed" },
+  teal:    { bg: "bg-teal-50",    icon: "#0d9488" },
+  amber:   { bg: "bg-amber-50",   icon: "#d97706" },
+  rose:    { bg: "bg-rose-50",    icon: "#e11d48" },
+  emerald: { bg: "bg-emerald-50", icon: "#059669" },
+  indigo:  { bg: "bg-indigo-50",  icon: "#4f46e5" },
+  slate:   { bg: "bg-slate-100",  icon: "#475569" },
+};
+
+export const Card = memo(function Card({ title, description, meta, count, countColor = "blue", icon, tone = "blue", onPress }: CardProps) {
   const Container = onPress ? Pressable : View;
   const cs = COUNT_STYLES[countColor];
+  const ts = TONE_STYLES[tone];
 
   return (
     <Container
       onPress={onPress}
-      className="mb-3 w-full rounded-xl border border-slate-200 bg-white p-4 active:bg-slate-50"
+      className="mb-3 w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:bg-slate-50"
     >
       <View className="flex-row items-center">
         {icon ? (
-          <View className="mr-3 h-9 w-9 items-center justify-center rounded-lg bg-brand-50">
-            <MaterialIcons name={icon} size={20} color="#1d4ed8" />
+          <View className={`mr-3 h-10 w-10 items-center justify-center rounded-xl ${ts.bg}`}>
+            <MaterialIcons name={icon} size={20} color={ts.icon} />
           </View>
         ) : null}
         <View className="flex-1">
@@ -50,4 +67,4 @@ export function Card({ title, description, meta, count, countColor = "blue", ico
       </View>
     </Container>
   );
-}
+});

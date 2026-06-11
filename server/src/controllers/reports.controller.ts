@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "../config/supabase";
 import { asyncHandler, HttpError } from "../middleware/errorHandler";
 import { generateReportPdf, ReportPdfData } from "../services/reportPdf.service";
+import { logAudit } from "../services/audit.service";
 
 // ---------------------------------------------------------------------------
 // snake_case (DB column) <-> camelCase (API field) mapping for `reports`.
@@ -811,6 +812,14 @@ export const submitReport = asyncHandler(async (req: Request, res: Response) => 
       .update({ status: "closed" })
       .eq("id", existing.jansunwai_application_id);
   }
+
+  await logAudit({
+    actor: user,
+    action: "report.submit",
+    targetTable: "reports",
+    targetId: existing.id,
+    details: { referenceNumber: existing.reference_number },
+  });
 
   res.json(await rowToDetailDto(updated));
 });

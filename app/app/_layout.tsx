@@ -11,6 +11,7 @@ import {
   NotoSansDevanagari_700Bold,
 } from "@expo-google-fonts/noto-sans-devanagari";
 import { AuthProvider } from "../context/AuthContext";
+import { OfflineProvider } from "../context/OfflineContext";
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -30,14 +31,16 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <StatusBar style="dark" />
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(app)" />
-        </Stack>
-      </AuthProvider>
+      <OfflineProvider>
+        <AuthProvider>
+          <StatusBar style="dark" />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(app)" />
+          </Stack>
+        </AuthProvider>
+      </OfflineProvider>
     </SafeAreaProvider>
   );
 }

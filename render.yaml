@@ -10,8 +10,6 @@ services:
         value: production
       - key: PORT
         value: 4000
-      - key: JWT_SECRET
-        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY
