@@ -9,6 +9,11 @@ import { startScrapeScheduler } from "./services/scraping/scheduler";
 
 const app = express();
 
+// Render sits in front of the app as a single reverse-proxy hop, setting
+// X-Forwarded-For — trust it so req.ip (used by express-rate-limit) reflects
+// the real client IP instead of Render's internal proxy address.
+app.set("trust proxy", 1);
+
 const allowedOrigins = env.appUrl
   .split(",")
   .map((o) => o.trim())
