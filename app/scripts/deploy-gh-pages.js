@@ -21,7 +21,14 @@ try {
   // Copy entire dist into the temp dir
   fs.cpSync(DIST, tempDir, { recursive: true });
 
+  // The temp dir is a brand-new repo with no local config, so it needs its
+  // own committer identity even if the user has no global git config set.
+  const userName = execFileSync("git", ["config", "user.name"], { cwd: __dirname }).toString().trim();
+  const userEmail = execFileSync("git", ["config", "user.email"], { cwd: __dirname }).toString().trim();
+
   run("git", ["init", "-b", "gh-pages"]);
+  run("git", ["config", "user.name", userName]);
+  run("git", ["config", "user.email", userEmail]);
   run("git", ["remote", "add", "origin", REMOTE]);
   run("git", ["add", "-A"]); // no .gitignore here — fonts included
   run("git", ["commit", "-m", "Deploy: Expo web build"]);
