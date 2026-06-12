@@ -8,6 +8,7 @@ import {
   runJanSunwaiScrape,
 } from "../services/scraping/janSunwaiPortal.service";
 import { raceOrBackground } from "../utils/backgroundRefresh";
+import { createNotification } from "../services/notifications.service";
 
 const SIGNED_URL_TTL_SECONDS = 60 * 10;
 
@@ -272,6 +273,15 @@ export const allotApplication = asyncHandler(async (req: Request, res: Response)
   if (error || !data) throw new HttpError(404, "Application not found");
 
   const row = data as unknown as Record<string, any>;
+
+  await createNotification(
+    ioId,
+    "jansunwai_assigned",
+    "नई जनसुनवाई आवेदन आवंटित",
+    `आवेदन संख्या ${row.application_number ?? ""} आपको आवंटित किया गया है।`,
+    { applicationId: row.id, applicationNumber: row.application_number }
+  );
+
   const chowkiNames = await loadChowkiNames([row]);
   res.json({ application: toAllotmentDto(row, chowkiNames) });
 });
