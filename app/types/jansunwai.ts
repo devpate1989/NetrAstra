@@ -1,11 +1,14 @@
 export type PetitionFormat = "pdf" | "text";
 export type JanSunwaiStatus = "pending" | "report_started" | "closed";
+export type AssignmentSource = "manual" | "ai_chowki" | "ai_unmatched" | null;
 
 export interface IgrsApplication {
   id: string;
   applicationNumber: string;
   assignedIoId: string | null;
   assignedIoName: string | null;
+  assignedChowkiName: string | null;
+  assignmentSource: AssignmentSource;
   petitionerName: string | null;
   petitionerMobile: string | null;
   subject: string | null;
@@ -34,6 +37,8 @@ export interface JanSunwaiSummary {
   id: string;
   applicationNumber: string;
   assignedIoName: string | null;
+  assignedChowkiName: string | null;
+  assignmentSource: AssignmentSource;
   petitionerName: string | null;
   subject: string | null;
   status: JanSunwaiStatus;
@@ -47,6 +52,8 @@ export interface JanSunwaiDetail {
   applicationNumber: string;
   assignedIoId: string | null;
   assignedIoName: string | null;
+  assignedChowkiName: string | null;
+  assignmentSource: AssignmentSource;
   petitionerName: string | null;
   petitionerAddress: string | null;
   petitionerMobile: string | null;

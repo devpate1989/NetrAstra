@@ -11,6 +11,10 @@ const updateProfileSchema = z.object({
   avatarUrl: z.string().url().optional(),
 });
 
+const registerPushTokenSchema = z.object({
+  token: z.string().min(1),
+});
+
 export const getMyProfile = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
@@ -67,4 +71,18 @@ export const updateMyProfile = asyncHandler(async (req: Request, res: Response) 
     phone: profile.phone,
     avatarUrl: profile.avatar_url,
   });
+});
+
+/** Stores the device's Expo push token so the server can send push notifications. */
+export const registerPushToken = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { token } = registerPushTokenSchema.parse(req.body);
+
+  const { error } = await supabaseAdmin.from("profiles").update({ expo_push_token: token }).eq("id", userId);
+
+  if (error) {
+    throw new HttpError(400, error.message);
+  }
+
+  res.json({ ok: true });
 });

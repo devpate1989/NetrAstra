@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { apiRequest } from "../lib/api";
+import { registerForPushNotificationsAsync } from "../lib/notifications";
 import type { AppUser } from "../types";
 
 interface AuthContextValue {
@@ -27,6 +28,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // fetch more headroom so it succeeds instead of falling back to logged-out-looking state.
       const profile = await apiRequest<AppUser>("/profile/me", { timeoutMs: 60_000 });
       setUser(profile);
+      registerForPushNotificationsAsync().catch((err) => {
+        console.warn("[auth] Failed to register for push notifications:", err);
+      });
     } catch (err) {
       console.warn("[auth] Failed to load profile:", err);
       setUser(null);

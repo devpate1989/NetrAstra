@@ -12,8 +12,8 @@ import { raceOrBackground } from "../utils/backgroundRefresh";
 const SIGNED_URL_TTL_SECONDS = 60 * 10;
 
 const SELECT_COLUMNS =
-  "id, application_number, source, assigned_io_id, assigned_io_name, petitioner_name, " +
-  "petitioner_address, petitioner_mobile, subject, description, petition_format, petition_url, " +
+  "id, application_number, source, assigned_io_id, assigned_io_name, assigned_chowki_id, assignment_source, " +
+  "petitioner_name, petitioner_address, petitioner_mobile, subject, description, petition_format, petition_url, " +
   "petition_text, status, report_id, scraped_at, created_at, updated_at";
 
 function paramId(req: Request): string {
@@ -21,11 +21,22 @@ function paramId(req: Request): string {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function toSummaryDto(row: Record<string, any>) {
+/** Resolves `assigned_chowki_id` values to चौकी/हल्का names for the given rows. */
+async function loadChowkiNames(rows: Record<string, any>[]): Promise<Map<string, string>> {
+  const ids = [...new Set(rows.map((r) => r.assigned_chowki_id).filter(Boolean))];
+  if (ids.length === 0) return new Map();
+
+  const { data } = await supabaseAdmin.from("chowkis").select("id, name").in("id", ids);
+  return new Map((data ?? []).map((c) => [c.id as string, c.name as string]));
+}
+
+function toSummaryDto(row: Record<string, any>, chowkiNames: Map<string, string>) {
   return {
     id: row.id,
     applicationNumber: row.application_number,
     assignedIoName: row.assigned_io_name,
+    assignedChowkiName: row.assigned_chowki_id ? chowkiNames.get(row.assigned_chowki_id) ?? null : null,
+    assignmentSource: row.assignment_source,
     petitionerName: row.petitioner_name,
     subject: row.subject,
     status: row.status,
@@ -35,12 +46,14 @@ function toSummaryDto(row: Record<string, any>) {
   };
 }
 
-function toAllotmentDto(row: Record<string, any>) {
+function toAllotmentDto(row: Record<string, any>, chowkiNames: Map<string, string>) {
   return {
     id: row.id,
     applicationNumber: row.application_number,
     assignedIoId: row.assigned_io_id,
     assignedIoName: row.assigned_io_name,
+    assignedChowkiName: row.assigned_chowki_id ? chowkiNames.get(row.assigned_chowki_id) ?? null : null,
+    assignmentSource: row.assignment_source,
     petitionerName: row.petitioner_name,
     petitionerMobile: row.petitioner_mobile,
     subject: row.subject,
@@ -50,7 +63,7 @@ function toAllotmentDto(row: Record<string, any>) {
   };
 }
 
-async function toDetailDto(row: Record<string, any>) {
+async function toDetailDto(row: Record<string, any>, chowkiNames: Map<string, string>) {
   let petitionDownloadUrl: string | null = null;
   if (row.petition_format === "pdf" && row.petition_url) {
     const { data, error } = await supabaseAdmin.storage
@@ -64,6 +77,8 @@ async function toDetailDto(row: Record<string, any>) {
     applicationNumber: row.application_number,
     assignedIoId: row.assigned_io_id,
     assignedIoName: row.assigned_io_name,
+    assignedChowkiName: row.assigned_chowki_id ? chowkiNames.get(row.assigned_chowki_id) ?? null : null,
+    assignmentSource: row.assignment_source,
     petitionerName: row.petitioner_name,
     petitionerAddress: row.petitioner_address,
     petitionerMobile: row.petitioner_mobile,
@@ -103,7 +118,8 @@ export const listPendingApplications = asyncHandler(async (req: Request, res: Re
     throw new HttpError(400, error.message);
   }
 
-  res.json({ applications: (data ?? []).map(toSummaryDto) });
+  const chowkiNames = await loadChowkiNames(data ?? []);
+  res.json({ applications: (data ?? []).map((row) => toSummaryDto(row, chowkiNames)) });
 });
 
 /**
@@ -125,7 +141,8 @@ export const getApplication = asyncHandler(async (req: Request, res: Response) =
     throw new HttpError(403, "This application is not assigned to you");
   }
 
-  res.json(await toDetailDto(row));
+  const chowkiNames = await loadChowkiNames([row]);
+  res.json(await toDetailDto(row, chowkiNames));
 });
 
 /** On-demand re-scrape of the Jan Sunwai portal (in addition to the scheduled cron run). */
@@ -183,8 +200,8 @@ export const listAllApplications = asyncHandler(async (req: Request, res: Respon
   const offset = (page - 1) * limit;
 
   const ALLOTMENT_COLUMNS =
-    "id, application_number, assigned_io_id, assigned_io_name, petitioner_name, " +
-    "petitioner_mobile, subject, description, status, scraped_at";
+    "id, application_number, assigned_io_id, assigned_io_name, assigned_chowki_id, assignment_source, " +
+    "petitioner_name, petitioner_mobile, subject, description, status, scraped_at";
 
   let query = supabaseAdmin
     .from("jansunwai_applications")
@@ -198,8 +215,9 @@ export const listAllApplications = asyncHandler(async (req: Request, res: Respon
   const { data, error, count } = await query;
   if (error) throw new HttpError(400, error.message);
 
+  const chowkiNames = await loadChowkiNames(data ?? []);
   res.json({
-    applications: (data ?? []).map(toAllotmentDto),
+    applications: (data ?? []).map((row) => toAllotmentDto(row, chowkiNames)),
     total: count ?? 0,
     page,
     limit,
@@ -243,15 +261,17 @@ export const allotApplication = asyncHandler(async (req: Request, res: Response)
 
   const { data, error } = await supabaseAdmin
     .from("jansunwai_applications")
-    .update({ assigned_io_id: ioId, assigned_io_name: io.full_name })
+    .update({ assigned_io_id: ioId, assigned_io_name: io.full_name, assignment_source: "manual" })
     .eq("id", id)
     .select(
-      "id, application_number, assigned_io_id, assigned_io_name, petitioner_name, " +
-        "petitioner_mobile, subject, description, status, scraped_at"
+      "id, application_number, assigned_io_id, assigned_io_name, assigned_chowki_id, assignment_source, " +
+        "petitioner_name, petitioner_mobile, subject, description, status, scraped_at"
     )
     .single();
 
   if (error || !data) throw new HttpError(404, "Application not found");
 
-  res.json({ application: toAllotmentDto(data as unknown as Record<string, any>) });
+  const row = data as unknown as Record<string, any>;
+  const chowkiNames = await loadChowkiNames([row]);
+  res.json({ application: toAllotmentDto(row, chowkiNames) });
 });

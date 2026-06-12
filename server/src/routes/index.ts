@@ -8,6 +8,7 @@ import { adminRouter } from "./admin.routes";
 import { directoryRouter } from "./directory.routes";
 import { documentsRouter } from "./documents.routes";
 import { legalRouter } from "./legal.routes";
+import { notificationsRouter } from "./notifications.routes";
 
 export const apiRouter = Router();
 
@@ -22,3 +23,4 @@ apiRouter.use("/admin", adminRouter);
 apiRouter.use("/directory", directoryRouter);
 apiRouter.use("/documents", documentsRouter);
 apiRouter.use("/legal", legalRouter);
+apiRouter.use("/notifications", notificationsRouter);

@@ -93,7 +93,9 @@ export default function JanSunwaiListScreen() {
             key={app.id}
             title={`आवेदन संख्या: ${app.applicationNumber}`}
             description={`${app.petitionerName ?? "Unknown petitioner"}${app.subject ? ` — ${app.subject}` : ""}`}
-            meta={`${STATUS_LABELS[app.status] ?? app.status} · ${app.petitionFormat === "pdf" ? "PDF" : "Text"} petition`}
+            meta={`${STATUS_LABELS[app.status] ?? app.status} · ${app.petitionFormat === "pdf" ? "PDF" : "Text"} petition${
+              app.assignmentSource === "ai_chowki" ? " · Auto-assigned by AI" : ""
+            }`}
             onPress={() => router.push({ pathname: "/(app)/jansunwai/[id]", params: { id: app.id } })}
           />
         ))

@@ -250,13 +250,26 @@ export default function IgrsAllotmentScreen() {
             </Text>
           ) : null}
 
+          {/* AI suggestion hint when no profile could be matched */}
+          {!allotted && app.assignmentSource === "ai_unmatched" && app.assignedChowkiName ? (
+            <View className="mb-2 flex-row items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5">
+              <MaterialIcons name="auto-awesome" size={13} color="#d97706" />
+              <Text className="text-xs text-amber-700" numberOfLines={1}>
+                AI सुझाव: {app.assignedChowkiName} — कोई प्रोफ़ाइल मैच नहीं मिला
+              </Text>
+            </View>
+          ) : null}
+
           {/* Allotment row */}
           {allotted ? (
             <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5">
+              <View className="flex-1 flex-row items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5">
                 <MaterialIcons name="check-circle" size={13} color="#059669" />
-                <Text className="text-xs font-medium text-emerald-700" numberOfLines={1}>
+                <Text className="flex-1 text-xs font-medium text-emerald-700" numberOfLines={1}>
                   {app.assignedIoName ?? "Assigned"}
+                  {app.assignmentSource === "ai_chowki" && app.assignedChowkiName
+                    ? ` · AI via ${app.assignedChowkiName}`
+                    : ""}
                 </Text>
               </View>
               <Pressable

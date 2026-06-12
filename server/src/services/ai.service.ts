@@ -122,6 +122,45 @@ No explanation. No quotes. Just the name or the word null.`,
   }
 }
 
+const _villageMatchCache = new Map<string, { result: string | null; expires: number }>();
+
+/**
+ * Uses Claude to find which गाँव/मोहल्ला (from the चौकी/बीट directory) a Jan
+ * Sunwai petition's incident location (पता / घटनास्थल / description) refers
+ * to, allowing for spelling variation and transliteration. Returns the exact
+ * village name from the list, or null if no plausible match is found.
+ * Results are cached in-process for 1 hour to avoid repeated API calls.
+ */
+export async function matchIncidentVillage(
+  incidentText: string,
+  villageNames: string[]
+): Promise<string | null> {
+  if (!isAiConfigured() || !incidentText.trim() || villageNames.length === 0) return null;
+
+  const cacheKey = incidentText.trim().toLowerCase();
+  const cached = _villageMatchCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) return cached.result;
+
+  try {
+    const raw = await askClaude(
+      `You read Jan Sunwai (जनसुनवाई) petitions filed with UP Police and identify which गाँव/मोहल्ला (village) the incident location (पता / घटनास्थल) refers to. Given the petition text and a list of village names, return the village from the list that the petition's location refers to (allowing for differences in spelling, transliteration, or added suffixes like "गाँव"/"पुरवा").
+Reply with ONLY the exact matching village name as it appears in the list, or the word null if no village is a plausible match.
+No explanation. No quotes. Just the village name or the word null.`,
+      `Petition text:\n${incidentText.trim()}\n\nVillages:\n${villageNames.join("\n")}`,
+      "claude-haiku-4-5-20251001",
+      100
+    );
+
+    const trimmed = raw.trim();
+    const result = trimmed === "null" || !villageNames.includes(trimmed) ? null : trimmed;
+    _villageMatchCache.set(cacheKey, { result, expires: Date.now() + 60 * 60 * 1_000 });
+    return result;
+  } catch (err) {
+    console.error("[ai] Incident village matching failed:", err);
+    return null;
+  }
+}
+
 /**
  * Given a Jan Sunwai petition text, suggests a relevant IPC section and a
  * concise summary for the IO. Returns null if AI is not configured.

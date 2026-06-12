@@ -110,6 +110,14 @@ export default function JanSunwaiDetailScreen() {
         <Field label="मोबाइल (Mobile)" value={application.petitionerMobile} />
         <Field label="विषय (Subject)" value={application.subject} />
         <Field label="सौंपा गया IO (Assigned IO)" value={application.assignedIoName} />
+        <Field
+          label="चौकी/हल्का (Beat)"
+          value={
+            application.assignedChowkiName
+              ? `${application.assignedChowkiName}${application.assignmentSource === "ai_chowki" ? " (AI auto-assigned)" : ""}`
+              : null
+          }
+        />
       </View>
 
       <Text className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">प्रार्थना पत्र (Petition)</Text>

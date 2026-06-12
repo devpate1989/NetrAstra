@@ -15,6 +15,8 @@ SQL migrations for the Netra Astra Supabase project, applied in filename order:
 11. `20260610010000_scanned_documents.sql` — `scanned_documents` table (Document Intelligence Engine) + `scanned-documents` private storage bucket, owner-only RLS
 12. `20260610020000_legal_analysis.sql` — `legal_analyses` table (AI legal analysis, owner-only RLS) + `bns_section_mappings` curated IPC/CrPC/Evidence Act → BNS/BNSS/BSA reference table (read-only for authenticated users)
 13. `20260611000000_beat_directory.sql` — `chowkis`/`chowki_villages`/`chowki_officers` (बीट/चौकी → गाँव/मोहल्ले → SI reference data) and `thana_staff` (Karm Yogi-registered थाना personnel), curated reference tables for Thana Kumarganj, read-only for authenticated users, admin-managed
+14. `20260612000000_jansunwai_reference_summary.sql` — `jansunwai_reference_summary` (category-wise pending counts), SHO/Admin-only read RLS
+15. `20260613000000_jansunwai_assignment_and_notifications.sql` — adds `jansunwai_applications.assigned_chowki_id`/`assignment_source` (AI चौकी/हल्का auto-assignment audit trail), `profiles.expo_push_token`, and the `notifications` table (owner-only read/mark-read RLS)
 
 ## Applying
 

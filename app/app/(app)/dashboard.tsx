@@ -54,6 +54,7 @@ export default function DashboardScreen() {
 
   const [jansunwaiCount, setJansunwaiCount] = useState<number | null>(null);
   const [cctnsCount, setCctnsCount] = useState<number | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,6 +66,14 @@ export default function DashboardScreen() {
         .then((d) => setCctnsCount(d.investigations.length))
         .catch(() => {});
     }, [user?.role])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      apiRequest<{ notifications: { readAt: string | null }[] }>("/notifications")
+        .then((d) => setUnreadCount(d.notifications.filter((n) => !n.readAt).length))
+        .catch(() => {});
+    }, [])
   );
 
   async function syncIgrs() {
@@ -120,13 +129,27 @@ export default function DashboardScreen() {
             </View>
           )}
         </View>
-        <Avatar
-          name={user?.fullName ?? user?.email}
-          avatarUrl={user?.avatarUrl}
-          size={56}
-          bgClassName="bg-white/20"
-          textClassName="text-white"
-        />
+        <View className="items-center gap-3">
+          <Pressable
+            onPress={() => router.push("/(app)/notifications")}
+            className="h-10 w-10 items-center justify-center rounded-full bg-white/15"
+            hitSlop={8}
+          >
+            <MaterialIcons name="notifications" size={20} color="#fff" />
+            {unreadCount > 0 ? (
+              <View className="absolute -right-1 -top-1 h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-1">
+                <Text className="text-[10px] font-bold text-white">{unreadCount > 9 ? "9+" : unreadCount}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+          <Avatar
+            name={user?.fullName ?? user?.email}
+            avatarUrl={user?.avatarUrl}
+            size={56}
+            bgClassName="bg-white/20"
+            textClassName="text-white"
+          />
+        </View>
       </View>
 
       {/* ── IO section ──────────────────────────────────────── */}

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "223976857922",
+    "project_id": "netra-astra",
+    "storage_bucket": "netra-astra.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:223976857922:android:4897b57d2798c7383368db",
+        "android_client_info": {
+          "package_name": "com.netraastra.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB4M6JhiHgDG26j1VBvlYEjQHHoC_9zzUU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -4,6 +4,7 @@ import { env } from "../../config/env";
 import { supabaseAdmin } from "../../config/supabase";
 import { waitForElement, withDriver } from "./browser";
 import { solveCaptchaImage } from "./captcha.service";
+import { autoAssignPendingApplications } from "../jansunwaiAssignment.service";
 
 /**
  * ──────────────────────────────────────────────────────────────────────────
@@ -361,6 +362,13 @@ export async function runJanSunwaiScrape(): Promise<JanSunwaiScrapeResult> {
 
       const rows = await scrapeListing(driver);
       const stored = await storeRows(rows);
+
+      try {
+        await autoAssignPendingApplications();
+      } catch (err) {
+        console.error("[jansunwai-scraper] Auto-assignment failed:", err);
+      }
+
       return { ranAt, scraped: rows.length, stored, skipped: false };
     });
   } catch (err) {

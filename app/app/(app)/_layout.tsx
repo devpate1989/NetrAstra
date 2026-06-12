@@ -71,6 +71,7 @@ export default function AppLayout() {
       />
 
       {/* Sub-routes — never show as tabs */}
+      <Tabs.Screen name="notifications" options={{ href: null }} />
       <Tabs.Screen name="admin/users" options={{ href: null }} />
       <Tabs.Screen name="admin/audit-log" options={{ href: null }} />
       <Tabs.Screen name="directory/emergency" options={{ href: null }} />
