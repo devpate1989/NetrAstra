@@ -1,7 +1,8 @@
 import { memo, useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
 import { Text } from "../../components/Text";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { ScreenContainer } from "../../components/ScreenContainer";
 import { Banner } from "../../components/Banner";
 import { PrimaryButton } from "../../components/PrimaryButton";
@@ -123,6 +124,7 @@ const CaseRow = memo(function CaseRow({
 export default function InvestigationsScreen() {
   const { user } = useAuth();
   const canEdit = user?.role === "admin";
+  const { io: ioFilter } = useLocalSearchParams<{ io?: string }>();
 
   const [groups, setGroups] = useState<InvestigationGroup[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -187,19 +189,34 @@ export default function InvestigationsScreen() {
     }
   }, [load]);
 
-  const totalCases = groups?.reduce((sum, g) => sum + g.cases.length, 0) ?? 0;
-
   const isIo = user?.role === "io";
+
+  const displayGroups = !isIo && ioFilter ? (groups ?? []).filter((g) => g.ioName === ioFilter) : groups;
+  const totalCases = displayGroups?.reduce((sum, g) => sum + g.cases.length, 0) ?? 0;
 
   return (
     <ScreenContainer
-      title={isIo ? "My Pending Cases" : "Pending Investigations"}
+      title={!isIo && ioFilter ? ioFilter : isIo ? "My Pending Cases" : "Pending Investigations"}
       subtitle={
         isIo
           ? "CCTNS-tracked cases assigned to you"
-          : "CCTNS report tracker — categorized by Investigating Officer (IO)"
+          : ioFilter
+            ? "CCTNS-tracked pending cases for this officer"
+            : "CCTNS report tracker — categorized by Investigating Officer (IO)"
       }
     >
+      {!isIo && ioFilter ? (
+        <View className="mb-4">
+          <Pressable
+            onPress={() => router.replace("/(app)/investigations")}
+            className="flex-row items-center self-start gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5"
+          >
+            <MaterialIcons name="arrow-back" size={14} color="#475569" />
+            <Text className="text-xs font-medium text-slate-600">All officers</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       {!isIo && (
         <View className="mb-4">
           <PrimaryButton
@@ -217,11 +234,11 @@ export default function InvestigationsScreen() {
 
       {loading && !groups ? (
         <ActivityIndicator color="#1d4ed8" />
-      ) : groups && groups.length > 0 ? (
+      ) : displayGroups && displayGroups.length > 0 ? (
         <>
           <View className="mb-3 flex-row items-center justify-between">
             <Text className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              {groups.length} IO{groups.length === 1 ? "" : "s"} · {totalCases} pending case{totalCases === 1 ? "" : "s"}
+              {displayGroups.length} IO{displayGroups.length === 1 ? "" : "s"} · {totalCases} pending case{totalCases === 1 ? "" : "s"}
             </Text>
             <View className="flex-row gap-3">
               <View className="flex-row items-center gap-1">
@@ -238,7 +255,7 @@ export default function InvestigationsScreen() {
               </View>
             </View>
           </View>
-          {groups.map((group) => (
+          {displayGroups.map((group) => (
             <View key={group.ioName} className="mb-5">
               <Text className="mb-2 text-base font-bold text-slate-900">{group.ioName}</Text>
               {group.cases.map((item) => (
@@ -251,7 +268,9 @@ export default function InvestigationsScreen() {
         <Text className="mt-2 text-sm text-slate-500">
           {isIo
             ? "No pending cases are assigned to you in CCTNS right now."
-            : 'No pending investigations are stored yet. Tap "Refresh from CCTNS portal" once the portal URL and credentials are configured.'}
+            : ioFilter
+              ? `No pending investigations found for ${ioFilter}.`
+              : 'No pending investigations are stored yet. Tap "Refresh from CCTNS portal" once the portal URL and credentials are configured.'}
         </Text>
       )}
     </ScreenContainer>
