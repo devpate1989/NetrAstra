@@ -8,7 +8,7 @@ import { Banner } from "../../../components/Banner";
 import { PrimaryButton } from "../../../components/PrimaryButton";
 import { apiRequest, ApiError } from "../../../lib/api";
 import type { JanSunwaiSummary } from "../../../types/jansunwai";
-import type { ScrapeRunResult } from "../../../types/investigation";
+import type { ScrapeRefreshResult } from "../../../types/investigation";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
@@ -51,11 +51,13 @@ export default function JanSunwaiListScreen() {
     setError("");
     setNotice("");
     try {
-      const { result } = await apiRequest<{ result: ScrapeRunResult }>("/jansunwai/refresh", {
+      const { result } = await apiRequest<{ result: ScrapeRefreshResult }>("/jansunwai/refresh", {
         method: "POST",
         timeoutMs: SYNC_TIMEOUT_MS,
       });
-      if (result.skipped) {
+      if ("started" in result) {
+        setNotice("Sync started in the background — check back in a minute.");
+      } else if (result.skipped) {
         setNotice(result.reason || "The Jan Sunwai portal is not configured yet.");
       } else {
         setNotice(`Refreshed — stored ${result.stored} of ${result.scraped} applications.`);

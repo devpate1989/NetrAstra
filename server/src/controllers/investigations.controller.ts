@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../config/supabase";
 import { asyncHandler, HttpError } from "../middleware/errorHandler";
 import { runCctnsInvestigationsScrape } from "../services/scraping/cctnsPortal.service";
 import { matchIoName } from "../services/ai.service";
+import { raceOrBackground } from "../utils/backgroundRefresh";
 
 function paramId(req: Request): string {
   const value = req.params.id;
@@ -118,6 +119,9 @@ export const updateInvestigation = asyncHandler(async (req: Request, res: Respon
 
 /** On-demand re-scrape of the CCTNS portal (in addition to the scheduled cron run). */
 export const refreshInvestigations = asyncHandler(async (_req: Request, res: Response) => {
-  const result = await runCctnsInvestigationsScrape();
+  const result = await raceOrBackground(runCctnsInvestigationsScrape(), "cctns", (r) => {
+    if (r.skipped) console.log(`[cctns] on-demand refresh skipped: ${r.reason}`);
+    else console.log(`[cctns] on-demand refresh stored ${r.stored}/${r.scraped}`);
+  });
   res.json({ result });
 });

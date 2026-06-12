@@ -25,3 +25,13 @@ export interface ScrapeRunResult {
   skipped: boolean;
   reason?: string;
 }
+
+/**
+ * Returned instead of `ScrapeRunResult` when the portal scrape didn't finish
+ * within the server's response window — it's continuing in the background.
+ */
+export interface ScrapeStarted {
+  started: true;
+}
+
+export type ScrapeRefreshResult = ScrapeRunResult | ScrapeStarted;

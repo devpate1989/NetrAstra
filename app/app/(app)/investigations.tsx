@@ -8,7 +8,7 @@ import { PrimaryButton } from "../../components/PrimaryButton";
 import { FormField } from "../../components/FormField";
 import { useAuth } from "../../context/AuthContext";
 import { apiRequest, ApiError } from "../../lib/api";
-import type { Investigation, InvestigationGroup, ScrapeRunResult } from "../../types/investigation";
+import type { Investigation, InvestigationGroup, ScrapeRefreshResult } from "../../types/investigation";
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -155,8 +155,10 @@ export default function InvestigationsScreen() {
     setError("");
     setNotice("");
     try {
-      const { result } = await apiRequest<{ result: ScrapeRunResult }>("/investigations/refresh", { method: "POST" });
-      if (result.skipped) {
+      const { result } = await apiRequest<{ result: ScrapeRefreshResult }>("/investigations/refresh", { method: "POST" });
+      if ("started" in result) {
+        setNotice("Sync started in the background — check back in a minute.");
+      } else if (result.skipped) {
         setNotice(result.reason || "The CCTNS portal is not configured yet.");
       } else {
         setNotice(`Refreshed — stored ${result.stored} of ${result.scraped} pending investigations.`);

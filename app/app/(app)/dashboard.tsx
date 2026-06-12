@@ -8,6 +8,7 @@ import { Card } from "../../components/Card";
 import { Avatar } from "../../components/Avatar";
 import { useAuth } from "../../context/AuthContext";
 import { apiRequest } from "../../lib/api";
+import type { ScrapeRefreshResult } from "../../types/investigation";
 
 const ROLE_LABELS: Record<string, string> = {
   io: "Investigating Officer",
@@ -36,6 +37,14 @@ const IDLE: SyncState = { loading: false, result: null, error: null };
 // needs to comfortably cover a couple of minutes.
 const SYNC_TIMEOUT_MS = 180_000;
 
+// The server runs the scrape in the background and replies with `{ started: true }`
+// if it's not done within a few seconds, rather than holding the request open.
+function describeSyncResult(result: ScrapeRefreshResult): string {
+  if ("started" in result) return "Sync started in the background — check back in a minute.";
+  if (result.skipped) return result.reason ?? "Skipped — portal not configured";
+  return `${result.stored} stored, ${result.scraped} scraped`;
+}
+
 export default function DashboardScreen() {
   const { user } = useAuth();
   const roleLabel = user ? ROLE_LABELS[user.role] ?? user.role : "";
@@ -61,17 +70,11 @@ export default function DashboardScreen() {
   async function syncIgrs() {
     setIgrsSync({ loading: true, result: null, error: null });
     try {
-      const { result } = await apiRequest<{ result: { scraped: number; stored: number; skipped: boolean; reason?: string } }>(
+      const { result } = await apiRequest<{ result: ScrapeRefreshResult }>(
         "/jansunwai/refresh",
         { method: "POST", timeoutMs: SYNC_TIMEOUT_MS }
       );
-      setIgrsSync({
-        loading: false,
-        result: result.skipped
-          ? (result.reason ?? "Skipped — portal not configured")
-          : `${result.stored} stored, ${result.scraped} scraped`,
-        error: null,
-      });
+      setIgrsSync({ loading: false, result: describeSyncResult(result), error: null });
     } catch (err) {
       setIgrsSync({ loading: false, result: null, error: err instanceof Error ? err.message : "Sync failed" });
     }
@@ -80,17 +83,11 @@ export default function DashboardScreen() {
   async function syncCctns() {
     setCctnsSync({ loading: true, result: null, error: null });
     try {
-      const { result } = await apiRequest<{ result: { scraped: number; stored: number; skipped: boolean; reason?: string } }>(
+      const { result } = await apiRequest<{ result: ScrapeRefreshResult }>(
         "/investigations/refresh",
         { method: "POST", timeoutMs: SYNC_TIMEOUT_MS }
       );
-      setCctnsSync({
-        loading: false,
-        result: result.skipped
-          ? (result.reason ?? "Skipped — portal not configured")
-          : `${result.stored} stored, ${result.scraped} scraped`,
-        error: null,
-      });
+      setCctnsSync({ loading: false, result: describeSyncResult(result), error: null });
     } catch (err) {
       setCctnsSync({ loading: false, result: null, error: err instanceof Error ? err.message : "Sync failed" });
     }

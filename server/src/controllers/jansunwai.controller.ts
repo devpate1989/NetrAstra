@@ -7,6 +7,7 @@ import {
   runJanSunwaiReferenceSummaryScrape,
   runJanSunwaiScrape,
 } from "../services/scraping/janSunwaiPortal.service";
+import { raceOrBackground } from "../utils/backgroundRefresh";
 
 const SIGNED_URL_TTL_SECONDS = 60 * 10;
 
@@ -129,7 +130,10 @@ export const getApplication = asyncHandler(async (req: Request, res: Response) =
 
 /** On-demand re-scrape of the Jan Sunwai portal (in addition to the scheduled cron run). */
 export const refreshApplications = asyncHandler(async (_req: Request, res: Response) => {
-  const result = await runJanSunwaiScrape();
+  const result = await raceOrBackground(runJanSunwaiScrape(), "jansunwai", (r) => {
+    if (r.skipped) console.log(`[jansunwai] on-demand refresh skipped: ${r.reason}`);
+    else console.log(`[jansunwai] on-demand refresh stored ${r.stored}/${r.scraped}`);
+  });
   res.json({ result });
 });
 
@@ -161,7 +165,10 @@ export const listReferenceSummary = asyncHandler(async (_req: Request, res: Resp
 
 /** On-demand re-scrape of the category-wise reference summary. */
 export const refreshReferenceSummary = asyncHandler(async (_req: Request, res: Response) => {
-  const result = await runJanSunwaiReferenceSummaryScrape();
+  const result = await raceOrBackground(runJanSunwaiReferenceSummaryScrape(), "jansunwai-reference-summary", (r) => {
+    if (r.skipped) console.log(`[jansunwai-reference-summary] on-demand refresh skipped: ${r.reason}`);
+    else console.log(`[jansunwai-reference-summary] on-demand refresh stored ${r.stored} categories`);
+  });
   res.json({ result });
 });
 
