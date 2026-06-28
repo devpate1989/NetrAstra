@@ -43,7 +43,16 @@
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera so you can capture site-visit photos for inquiry reports."
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
