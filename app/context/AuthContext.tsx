@@ -40,14 +40,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!active) return;
-      setSession(data.session);
-      if (data.session) {
-        await loadProfile();
-      }
-      setIsLoading(false);
-    });
+    // getSession() can hang indefinitely on a stuck/slow network request
+    // (e.g. refreshing a stale token) with no built-in timeout, which left
+    // the app stuck on the loading spinner forever. Race it against a
+    // timeout so the app always reaches the login/dashboard screen.
+    const sessionCheck = supabase.auth.getSession();
+    const timeout = new Promise<{ data: { session: null } }>((resolve) =>
+      setTimeout(() => resolve({ data: { session: null } }), 10_000)
+    );
+
+    Promise.race([sessionCheck, timeout])
+      .then(async ({ data }) => {
+        if (!active) return;
+        setSession(data.session);
+        if (data.session) {
+          await loadProfile();
+        }
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.warn("[auth] Failed to get session:", err);
+        setSession(null);
+        setIsLoading(false);
+      });
 
     const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       setSession(nextSession);
