@@ -1,6 +1,6 @@
 import { ActivityIndicator, View, type ColorValue } from "react-native";
 import { Redirect, Tabs } from "expo-router";
-import { MaterialIcons } from "@expo/vector-icons";
+import MaterialIcons from "@expo/vector-icons/build/MaterialIcons";
 import { useAuth } from "../../context/AuthContext";
 
 type MIName = React.ComponentProps<typeof MaterialIcons>["name"];

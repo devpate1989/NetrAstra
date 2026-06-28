@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import MaterialIcons from "@expo/vector-icons/build/MaterialIcons";
 import { Text } from "../../components/Text";
 import { router, useFocusEffect } from "expo-router";
 import { ScreenContainer } from "../../components/ScreenContainer";

@@ -4,12 +4,13 @@ import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
-import {
-  NotoSansDevanagari_400Regular,
-  NotoSansDevanagari_500Medium,
-  NotoSansDevanagari_600SemiBold,
-  NotoSansDevanagari_700Bold,
-} from "@expo-google-fonts/noto-sans-devanagari";
+// Importing from the package's barrel index pulls in `require()` calls for
+// all 9 weights (only 4 of which we use) — import each weight's own subpath
+// instead so unused weights never enter the bundle.
+import { NotoSansDevanagari_400Regular } from "@expo-google-fonts/noto-sans-devanagari/400Regular";
+import { NotoSansDevanagari_500Medium } from "@expo-google-fonts/noto-sans-devanagari/500Medium";
+import { NotoSansDevanagari_600SemiBold } from "@expo-google-fonts/noto-sans-devanagari/600SemiBold";
+import { NotoSansDevanagari_700Bold } from "@expo-google-fonts/noto-sans-devanagari/700Bold";
 import { AuthProvider } from "../context/AuthContext";
 import { OfflineProvider } from "../context/OfflineContext";
 

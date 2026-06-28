@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Linking, Pressable, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import MaterialCommunityIcons from "@expo/vector-icons/build/MaterialCommunityIcons";
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
 import { Text } from "../../../components/Text";
