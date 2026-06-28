@@ -30,6 +30,8 @@ export interface ReferenceSummaryRow {
   unmarkCount: number;
   officePendingCount: number;
   totalPending: number;
+  /** Portal-native "अगले 3 दिवसों में डिफाल्टर" (defaulter within 3 days) count for this category. */
+  defaulter3DayCount: number;
   scrapedAt: string | null;
 }
 
@@ -45,6 +47,12 @@ export interface JanSunwaiSummary {
   petitionFormat: PetitionFormat;
   reportId: string | null;
   scrapedAt: string | null;
+  /** संदर्भ प्रकार (category) this application belongs to — null until the next portal sync re-scrapes it. */
+  referenceTypeCode: number | null;
+  referenceTypeName: string | null;
+  receivedDate: string | null;
+  /** Portal-native "अगले 3 दिवसों में डिफाल्टर" classification — not computed locally. */
+  isDefaulterSoon: boolean;
 }
 
 export interface JanSunwaiDetail {

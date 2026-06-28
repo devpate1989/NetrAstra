@@ -15,7 +15,8 @@ const SIGNED_URL_TTL_SECONDS = 60 * 10;
 const SELECT_COLUMNS =
   "id, application_number, source, assigned_io_id, assigned_io_name, assigned_chowki_id, assignment_source, " +
   "petitioner_name, petitioner_address, petitioner_mobile, subject, description, petition_format, petition_url, " +
-  "petition_text, status, report_id, scraped_at, created_at, updated_at";
+  "petition_text, status, report_id, scraped_at, created_at, updated_at, " +
+  "reference_type_code, reference_type_name, received_date, is_defaulter_soon";
 
 function paramId(req: Request): string {
   const value = req.params.id;
@@ -44,6 +45,10 @@ function toSummaryDto(row: Record<string, any>, chowkiNames: Map<string, string>
     petitionFormat: row.petition_format,
     reportId: row.report_id,
     scrapedAt: row.scraped_at,
+    referenceTypeCode: row.reference_type_code,
+    referenceTypeName: row.reference_type_name,
+    receivedDate: row.received_date,
+    isDefaulterSoon: row.is_defaulter_soon,
   };
 }
 
@@ -162,6 +167,7 @@ function toReferenceSummaryDto(row: Record<string, any>) {
     unmarkCount: row.unmark_count,
     officePendingCount: row.office_pending_count,
     totalPending: row.total_pending,
+    defaulter3DayCount: row.defaulter_3day_count,
     scrapedAt: row.scraped_at,
   };
 }
@@ -173,7 +179,10 @@ function toReferenceSummaryDto(row: Record<string, any>) {
 export const listReferenceSummary = asyncHandler(async (_req: Request, res: Response) => {
   const { data, error } = await supabaseAdmin
     .from("jansunwai_reference_summary")
-    .select("complaint_type_code, complaint_type_name, unmark_count, office_pending_count, total_pending, scraped_at")
+    .select(
+      "complaint_type_code, complaint_type_name, unmark_count, office_pending_count, total_pending, " +
+        "defaulter_3day_count, scraped_at"
+    )
     .order("total_pending", { ascending: false });
 
   if (error) throw new HttpError(400, error.message);

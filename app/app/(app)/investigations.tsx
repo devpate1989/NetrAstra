@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/build/MaterialIcons";
 import { Text } from "../../components/Text";
@@ -30,6 +30,22 @@ function pendingBadgeStyle(days: number): { bg: string; border: string; labelCol
   return { bg: "#16a34a", border: "#15803d", labelColor: "#bbf7d0", dotColor: "#16a34a" };
 }
 
+type AgeBucket = "30" | "60" | "90" | "90plus";
+
+function ageBucketKey(days: number): AgeBucket {
+  if (days <= 30) return "30";
+  if (days <= 60) return "60";
+  if (days <= 90) return "90";
+  return "90plus";
+}
+
+const AGE_BUCKETS: { key: AgeBucket; label: string; color: string }[] = [
+  { key: "30", label: "≤ 30 days", color: "#059669" },
+  { key: "60", label: "31–60 days", color: "#d97706" },
+  { key: "90", label: "61–90 days", color: "#ea580c" },
+  { key: "90plus", label: "90+ days", color: "#dc2626" },
+];
+
 interface EditState {
   ioName: string;
   section: string;
@@ -40,11 +56,13 @@ const CaseRow = memo(function CaseRow({
   canEdit,
   saving,
   onSave,
+  showIoName,
 }: {
   item: Investigation;
   canEdit: boolean;
   saving: boolean;
   onSave: (id: string, changes: EditState) => Promise<void>;
+  showIoName?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<EditState>({ ioName: item.ioName ?? "", section: item.section ?? "" });
@@ -83,6 +101,9 @@ const CaseRow = memo(function CaseRow({
           <Text className="text-xs text-slate-500">{formatDate(item.registeredOn)}</Text>
         </View>
         <Text className="text-sm text-slate-700">{item.complainantName || "Unknown complainant"}</Text>
+        {showIoName ? (
+          <Text className="mt-0.5 text-xs font-medium text-brand-600">{item.ioName || "Unassigned"}</Text>
+        ) : null}
         {item.caseSummary ? (
           <Text className="mt-1 text-xs text-slate-500">{item.caseSummary}</Text>
         ) : null}
@@ -132,6 +153,7 @@ export default function InvestigationsScreen() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [ageBucket, setAgeBucket] = useState<AgeBucket | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -191,18 +213,43 @@ export default function InvestigationsScreen() {
 
   const isIo = user?.role === "io";
 
+  const allCases = useMemo(() => (groups ?? []).flatMap((g) => g.cases), [groups]);
+
+  const bucketCounts = useMemo(() => {
+    const counts: Record<AgeBucket, number> = { "30": 0, "60": 0, "90": 0, "90plus": 0 };
+    for (const item of allCases) {
+      const days = pendingDays(item.registeredOn);
+      if (days === null) continue;
+      counts[ageBucketKey(days)] += 1;
+    }
+    return counts;
+  }, [allCases]);
+
+  const flatBucketCases = useMemo(() => {
+    if (!ageBucket) return null;
+    return allCases.filter((item) => {
+      if (ioFilter && item.ioName !== ioFilter) return false;
+      const days = pendingDays(item.registeredOn);
+      return days !== null && ageBucketKey(days) === ageBucket;
+    });
+  }, [allCases, ageBucket, ioFilter]);
+
   const displayGroups = !isIo && ioFilter ? (groups ?? []).filter((g) => g.ioName === ioFilter) : groups;
   const totalCases = displayGroups?.reduce((sum, g) => sum + g.cases.length, 0) ?? 0;
 
+  const bucketLabel = ageBucket ? AGE_BUCKETS.find((b) => b.key === ageBucket)?.label : null;
+
   return (
     <ScreenContainer
-      title={!isIo && ioFilter ? ioFilter : isIo ? "My Pending Cases" : "Pending Investigations"}
+      title={bucketLabel ? `Pendency ${bucketLabel}` : !isIo && ioFilter ? ioFilter : isIo ? "My Pending Cases" : "Pending Investigations"}
       subtitle={
         isIo
           ? "CCTNS-tracked cases assigned to you"
-          : ioFilter
-            ? "CCTNS-tracked pending cases for this officer"
-            : "CCTNS report tracker — categorized by Investigating Officer (IO)"
+          : bucketLabel
+            ? "CCTNS-tracked pending cases in this age range"
+            : ioFilter
+              ? "CCTNS-tracked pending cases for this officer"
+              : "CCTNS report tracker — categorized by Investigating Officer (IO)"
       }
     >
       {!isIo && ioFilter ? (
@@ -213,6 +260,46 @@ export default function InvestigationsScreen() {
           >
             <MaterialIcons name="arrow-back" size={14} color="#475569" />
             <Text className="text-xs font-medium text-slate-600">All officers</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {!isIo && !ioFilter && groups && groups.length > 0 ? (
+        <View className="mb-4">
+          <Text className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Pendency by age
+          </Text>
+          <View className="flex-row flex-wrap gap-2">
+            {AGE_BUCKETS.map((bucket) => {
+              const active = ageBucket === bucket.key;
+              return (
+                <Pressable
+                  key={bucket.key}
+                  onPress={() => setAgeBucket(active ? null : bucket.key)}
+                  style={{ backgroundColor: active ? bucket.color : `${bucket.color}1A` }}
+                  className="flex-1 items-center rounded-xl px-3 py-3"
+                >
+                  <Text style={{ color: active ? "#fff" : bucket.color }} className="text-2xl font-extrabold">
+                    {bucketCounts[bucket.key]}
+                  </Text>
+                  <Text style={{ color: active ? "#fff" : bucket.color }} className="mt-0.5 text-xs font-semibold">
+                    {bucket.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      {ageBucket ? (
+        <View className="mb-4">
+          <Pressable
+            onPress={() => setAgeBucket(null)}
+            className="flex-row items-center self-start gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5"
+          >
+            <MaterialIcons name="arrow-back" size={14} color="#475569" />
+            <Text className="text-xs font-medium text-slate-600">Clear day filter</Text>
           </Pressable>
         </View>
       ) : null}
@@ -234,11 +321,24 @@ export default function InvestigationsScreen() {
 
       {loading && !groups ? (
         <ActivityIndicator color="#1d4ed8" />
+      ) : ageBucket ? (
+        flatBucketCases && flatBucketCases.length > 0 ? (
+          <>
+            <Text className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">
+              {flatBucketCases.length} pending case{flatBucketCases.length === 1 ? "" : "s"}
+            </Text>
+            {flatBucketCases.map((item) => (
+              <CaseRow key={item.id} item={item} canEdit={canEdit} saving={savingId === item.id} onSave={handleSave} showIoName />
+            ))}
+          </>
+        ) : (
+          <Text className="mt-2 text-sm text-slate-500">No pending cases in this age range.</Text>
+        )
       ) : displayGroups && displayGroups.length > 0 ? (
         <>
           <View className="mb-3 flex-row items-center justify-between">
-            <Text className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              {displayGroups.length} IO{displayGroups.length === 1 ? "" : "s"} · {totalCases} pending case{totalCases === 1 ? "" : "s"}
+            <Text className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              {ioFilter ? "" : "IO-wise pendency"}
             </Text>
             <View className="flex-row gap-3">
               <View className="flex-row items-center gap-1">
@@ -255,6 +355,9 @@ export default function InvestigationsScreen() {
               </View>
             </View>
           </View>
+          <Text className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">
+            {displayGroups.length} IO{displayGroups.length === 1 ? "" : "s"} · {totalCases} pending case{totalCases === 1 ? "" : "s"}
+          </Text>
           {displayGroups.map((group) => (
             <View key={group.ioName} className="mb-5">
               <Text className="mb-2 text-base font-bold text-slate-900">{group.ioName}</Text>

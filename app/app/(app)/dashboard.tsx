@@ -45,12 +45,6 @@ function describeSyncResult(result: ScrapeRefreshResult): string {
   return `${result.stored} stored, ${result.scraped} scraped`;
 }
 
-function ioCountBadgeStyle(count: number): { bg: string; text: string } {
-  if (count >= 10) return { bg: "#dc2626", text: "#ffffff" };
-  if (count >= 5) return { bg: "#f97316", text: "#ffffff" };
-  return { bg: "#1d4ed8", text: "#ffffff" };
-}
-
 export default function DashboardScreen() {
   const { user } = useAuth();
   const roleLabel = user ? ROLE_LABELS[user.role] ?? user.role : "";
@@ -62,6 +56,7 @@ export default function DashboardScreen() {
   const [cctnsCount, setCctnsCount] = useState<number | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [ioGroups, setIoGroups] = useState<InvestigationGroup[] | null>(null);
+  const [igrsPendingCount, setIgrsPendingCount] = useState<number | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -80,6 +75,9 @@ export default function DashboardScreen() {
       if (user?.role !== "sho" && user?.role !== "admin") return;
       apiRequest<{ groupedByIo: InvestigationGroup[] }>("/investigations")
         .then((d) => setIoGroups(d.groupedByIo))
+        .catch(() => {});
+      apiRequest<{ applications: unknown[] }>("/jansunwai/pending")
+        .then((d) => setIgrsPendingCount(d.applications.length))
         .catch(() => {});
     }, [user?.role])
   );
@@ -219,57 +217,39 @@ export default function DashboardScreen() {
             Station overview
           </Text>
           <Card
+            title="Pending IGRS (जनसुनवाई)"
+            description="IO-wise, sandarbh-wise (संदर्भ प्रकार), and defaulter-in-3-days pendency overview."
+            meta="Open"
+            icon="hourglass-top"
+            tone="amber"
+            count={igrsPendingCount}
+            countColor={igrsPendingCount != null && igrsPendingCount >= 60 ? "red" : igrsPendingCount != null && igrsPendingCount >= 20 ? "orange" : "blue"}
+            onPress={() => router.push("/(app)/igrs/pendency")}
+          />
+          <Card
+            title="Pending Investigations"
+            description="CCTNS-tracked pending investigations — by age (30/60/90+ days) and by Investigating Officer."
+            meta={user.role === "admin" ? "View & Edit" : "View"}
+            icon="manage-search"
+            tone="blue"
+            count={ioGroups ? ioGroups.reduce((sum, g) => sum + g.cases.length, 0) : null}
+            countColor={
+              ioGroups && ioGroups.reduce((sum, g) => sum + g.cases.length, 0) >= 60
+                ? "red"
+                : ioGroups && ioGroups.reduce((sum, g) => sum + g.cases.length, 0) >= 20
+                  ? "orange"
+                  : "blue"
+            }
+            onPress={() => router.push("/(app)/investigations")}
+          />
+          <Card
             title="IGRS Allotment (जनसुनवाई)"
             description="View pending IGRS applications and allot each one to an Investigating Officer."
             meta="Open"
             icon="assignment-ind"
-            tone="amber"
+            tone="indigo"
             onPress={() => router.push("/(app)/igrs/allotment")}
           />
-          <Card
-            title="Pending Investigations (IO-wise)"
-            description="CCTNS-tracked pending investigations for your station, grouped by Investigating Officer."
-            meta={user.role === "admin" ? "View & Edit" : "View"}
-            icon="manage-search"
-            tone="blue"
-            onPress={() => router.push("/(app)/investigations")}
-          />
-
-          {ioGroups && ioGroups.length > 0 ? (
-            <View className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <View className="border-b border-slate-100 px-4 py-3">
-                <Text className="text-sm font-semibold text-slate-800">Pending cases by IO</Text>
-                <Text className="mt-0.5 text-xs text-slate-400">Tap an officer to view their pending cases.</Text>
-              </View>
-              {[...ioGroups]
-                .sort((a, b) => b.cases.length - a.cases.length)
-                .map((group, idx) => {
-                  const badge = ioCountBadgeStyle(group.cases.length);
-                  return (
-                    <Pressable
-                      key={group.ioName}
-                      onPress={() => router.push({ pathname: "/(app)/investigations", params: { io: group.ioName } })}
-                      className={`flex-row items-center justify-between px-4 py-3 active:bg-slate-50 ${idx > 0 ? "border-t border-slate-100" : ""}`}
-                    >
-                      <Text className="flex-1 pr-3 text-sm font-medium text-slate-800" numberOfLines={1}>
-                        {group.ioName}
-                      </Text>
-                      <View className="flex-row items-center gap-2">
-                        <View
-                          style={{ backgroundColor: badge.bg, minWidth: 28, height: 28, borderRadius: 14 }}
-                          className="items-center justify-center px-2"
-                        >
-                          <Text style={{ color: badge.text }} className="text-xs font-bold">
-                            {group.cases.length}
-                          </Text>
-                        </View>
-                        <MaterialIcons name="chevron-right" size={18} color="#94a3b8" />
-                      </View>
-                    </Pressable>
-                  );
-                })}
-            </View>
-          ) : null}
 
           {user.role === "admin" && (
             <Card

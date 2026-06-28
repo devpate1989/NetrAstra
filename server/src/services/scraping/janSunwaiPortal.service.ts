@@ -17,6 +17,9 @@ const ADAPTER = {
   loginPath: "/login",
   listingPath: "/igrs/officeLevelReferences",
   unmarkPath: "/igrs/UnmarkRefrence",
+  // Same complaitsType/submitBtn/[data-pagination] pattern as listingPath, plus
+  // a `pendingstatus` radio (0=डिफाल्टर, 1=लंबित, 2=अगले 3 दिवसों में डिफाल्टर, 10=रिमाइंडर).
+  defaulterReportPath: "/igrs/defaulterRefrenceReports",
 
   usernameSelector: "input[name='username']",
   passwordSelector: "input[name='password']",
@@ -42,6 +45,19 @@ interface ScrapedApplicationRow {
   description: string | null;
   receivedDate: string | null;
   raw: Record<string, string | null>;
+  // Set after extraction, in scrapeListing's category loop — not scraped
+  // per-card since the listing page only ever shows one category at a time.
+  referenceTypeCode?: number | null;
+  referenceTypeName?: string | null;
+}
+
+/** Converts a "DD/MM/YYYY" प्राप्त दिनांक string to an ISO date, or null. */
+function parseReceivedDate(value: string | null): string | null {
+  if (!value) return null;
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return null;
+  const [, day, month, year] = match;
+  return `${year}-${month}-${day}`;
 }
 
 export const JANSUNWAI_PETITIONS_BUCKET = "jansunwai-petitions";
@@ -256,6 +272,13 @@ async function selectReferenceType(driver: WebDriver, code: number): Promise<voi
   await driver.sleep(2_000);
 }
 
+/** Selects the `pendingstatus` radio for `value` (e.g. "2" = अगले 3 दिवसों में डिफाल्टर), unless already selected. Does not submit. */
+async function selectPendingStatus(driver: WebDriver, value: string): Promise<void> {
+  const radio = await driver.findElement({ css: `input[name='pendingstatus'][value='${value}']` });
+  if (await radio.isSelected()) return;
+  await radio.click();
+}
+
 /**
  * Scrapes every pending office-level आवेदन across all 14 संदर्भ प्रकार
  * categories — selecting each category in turn and paginating through its
@@ -278,6 +301,7 @@ async function scrapeListing(driver: WebDriver): Promise<ScrapedApplicationRow[]
     console.log(`[jansunwai-scraper] ${name}: ${total} pending across ${totalPages} page(s)`);
 
     const page1Rows = await extractCardsFromPage(driver);
+    page1Rows.forEach((r) => { r.referenceTypeCode = code; r.referenceTypeName = name; });
     allRows.push(...page1Rows);
 
     for (let page = 2; page <= totalPages; page++) {
@@ -289,6 +313,7 @@ async function scrapeListing(driver: WebDriver): Promise<ScrapedApplicationRow[]
       await driver.sleep(1_500);
 
       const pageRows = await extractCardsFromPage(driver);
+      pageRows.forEach((r) => { r.referenceTypeCode = code; r.referenceTypeName = name; });
       allRows.push(...pageRows);
     }
   }
@@ -317,6 +342,9 @@ async function storeRows(rows: ScrapedApplicationRow[]): Promise<number> {
         petition_url: null,
         petition_text: row.description,
         raw_data: row.raw,
+        reference_type_code: row.referenceTypeCode ?? null,
+        reference_type_name: row.referenceTypeName ?? null,
+        received_date: parseReceivedDate(row.receivedDate),
         scraped_at: new Date().toISOString(),
       },
       { onConflict: "source,application_number" }
@@ -424,9 +452,86 @@ async function collectReferenceTypeTotals(
   return totals;
 }
 
+/**
+ * Visits `/igrs/defaulterRefrenceReports` and, for each संदर्भ प्रकार category,
+ * selects its `complaitsType` radio AND the `pendingstatus` radio for "2"
+ * (अगले 3 दिवसों में डिफाल्टर — defaulter within the next 3 days, a portal-native
+ * classification — not computed locally), submits once, and paginates through
+ * the results collecting application numbers.
+ */
+async function scrapeDefaulterSoonApplicationNumbers(
+  driver: WebDriver
+): Promise<{ byCategory: Record<number, string[]>; all: string[] }> {
+  const url = new URL(ADAPTER.defaulterReportPath, env.jansunwaiPortalUrl).toString();
+  await driver.get(url);
+  await driver.sleep(2_500);
+
+  const byCategory: Record<number, string[]> = {};
+  const all: string[] = [];
+
+  for (const { code, name } of REFERENCE_TYPES) {
+    const categoryRadio = await driver.findElement({ css: `input[name='complaitsType'][value='${code}']` });
+    if (!(await categoryRadio.isSelected())) await categoryRadio.click();
+    await selectPendingStatus(driver, "2");
+
+    await (await driver.findElement({ css: "#submitBtn" })).click();
+    await driver.sleep(2_000);
+
+    const { total, pageSize } = await readPagination(driver);
+    const numbers: string[] = [];
+
+    if (total > 0) {
+      const totalPages = Math.ceil(total / pageSize);
+      const page1Rows = await extractCardsFromPage(driver);
+      numbers.push(...page1Rows.map((r) => r.applicationNumber).filter((n): n is string => Boolean(n)));
+
+      for (let page = 2; page <= totalPages; page++) {
+        await driver.executeScript(`AjPagination(${page})`);
+        await driver
+          .wait(until.elementLocated({ css: ADAPTER.cardLinkSelector }), 15_000)
+          .catch(() => null);
+        await driver.sleep(1_500);
+
+        const pageRows = await extractCardsFromPage(driver);
+        numbers.push(...pageRows.map((r) => r.applicationNumber).filter((n): n is string => Boolean(n)));
+      }
+    }
+
+    console.log(`[jansunwai-scraper] ${name}: ${numbers.length} defaulter-in-3-days`);
+    byCategory[code] = numbers;
+    all.push(...numbers);
+  }
+
+  return { byCategory, all };
+}
+
+/** Resets is_defaulter_soon on every application, then sets it true for the given application numbers. */
+async function syncDefaulterSoonFlags(applicationNumbers: string[]): Promise<void> {
+  const { error: resetError } = await supabaseAdmin
+    .from("jansunwai_applications")
+    .update({ is_defaulter_soon: false })
+    .eq("is_defaulter_soon", true);
+  if (resetError) {
+    console.error("[jansunwai-scraper] Failed to reset is_defaulter_soon flags:", resetError.message);
+  }
+
+  const CHUNK_SIZE = 200;
+  for (let i = 0; i < applicationNumbers.length; i += CHUNK_SIZE) {
+    const chunk = applicationNumbers.slice(i, i + CHUNK_SIZE);
+    const { error } = await supabaseAdmin
+      .from("jansunwai_applications")
+      .update({ is_defaulter_soon: true })
+      .in("application_number", chunk);
+    if (error) {
+      console.error("[jansunwai-scraper] Failed to set is_defaulter_soon flags:", error.message);
+    }
+  }
+}
+
 async function storeReferenceSummary(
   unmarkTotals: Record<number, number>,
-  officeTotals: Record<number, number>
+  officeTotals: Record<number, number>,
+  defaulterSoonTotals: Record<number, number>
 ): Promise<number> {
   let stored = 0;
   const scrapedAt = new Date().toISOString();
@@ -438,6 +543,7 @@ async function storeReferenceSummary(
         complaint_type_name: name,
         unmark_count: unmarkTotals[code] ?? 0,
         office_pending_count: officeTotals[code] ?? 0,
+        defaulter_3day_count: defaulterSoonTotals[code] ?? 0,
         scraped_at: scrapedAt,
       },
       { onConflict: "complaint_type_code" }
@@ -479,7 +585,21 @@ export async function runJanSunwaiReferenceSummaryScrape(): Promise<JanSunwaiRef
 
       const unmarkTotals = await collectReferenceTypeTotals(driver, ADAPTER.unmarkPath);
       const officeTotals = await collectReferenceTypeTotals(driver, ADAPTER.listingPath);
-      const stored = await storeReferenceSummary(unmarkTotals, officeTotals);
+
+      const { byCategory: defaulterSoonByCategory, all: defaulterSoonAll } =
+        await scrapeDefaulterSoonApplicationNumbers(driver);
+      const defaulterSoonTotals: Record<number, number> = {};
+      for (const { code } of REFERENCE_TYPES) {
+        defaulterSoonTotals[code] = defaulterSoonByCategory[code]?.length ?? 0;
+      }
+
+      const stored = await storeReferenceSummary(unmarkTotals, officeTotals, defaulterSoonTotals);
+
+      try {
+        await syncDefaulterSoonFlags(defaulterSoonAll);
+      } catch (err) {
+        console.error("[jansunwai-scraper] Failed to sync is_defaulter_soon flags:", err);
+      }
 
       return { ranAt, stored, skipped: false };
     });
