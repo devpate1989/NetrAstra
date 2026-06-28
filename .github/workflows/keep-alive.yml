@@ -2,9 +2,11 @@ name: Keep Render server alive
 
 on:
   schedule:
-    # Every 14 minutes — Render's free tier spins down after 15 min of
-    # inactivity, so this keeps the API warm and avoids cold-start timeouts.
-    - cron: "*/14 * * * *"
+    # Every 5 minutes — Render's free tier spins down after 15 min of
+    # inactivity. GitHub Actions cron schedules aren't guaranteed to fire on
+    # time (can be delayed under load), so a 5-min interval leaves a much
+    # bigger buffer than 14 min before hitting the 15-min spin-down window.
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
