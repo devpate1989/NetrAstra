@@ -21,7 +21,10 @@ async function main() {
     .filter((name) => name.endsWith(".sql"))
     .sort();
 
-  const client = new Client({ connectionString, ssl: { rejectUnauthorized: false } });
+  // Self-hosted/local Postgres instances don't speak SSL; only cloud
+  // Supabase connections need it.
+  const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
+  const client = new Client({ connectionString, ssl: isLocal ? false : { rejectUnauthorized: false } });
   await client.connect();
   console.log("Connected to database.");
 

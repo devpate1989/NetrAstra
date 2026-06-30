@@ -1,3 +1,6 @@
+# Self-hosted Supabase stack (local infra, not part of this app's source)
+/selfhost/
+
 # Dependencies
 node_modules/
 .pnp
