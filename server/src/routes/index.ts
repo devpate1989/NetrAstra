@@ -9,6 +9,7 @@ import { directoryRouter } from "./directory.routes";
 import { documentsRouter } from "./documents.routes";
 import { legalRouter } from "./legal.routes";
 import { notificationsRouter } from "./notifications.routes";
+import { pgRouter } from "./pg.routes";
 
 export const apiRouter = Router();
 
@@ -24,3 +25,4 @@ apiRouter.use("/directory", directoryRouter);
 apiRouter.use("/documents", documentsRouter);
 apiRouter.use("/legal", legalRouter);
 apiRouter.use("/notifications", notificationsRouter);
+apiRouter.use("/pg", pgRouter);

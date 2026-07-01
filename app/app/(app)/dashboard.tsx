@@ -57,6 +57,7 @@ export default function DashboardScreen() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [ioGroups, setIoGroups] = useState<InvestigationGroup[] | null>(null);
   const [igrsPendingCount, setIgrsPendingCount] = useState<number | null>(null);
+  const [pgPendingCount, setPgPendingCount] = useState<number | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -66,6 +67,9 @@ export default function DashboardScreen() {
         .catch(() => {});
       apiRequest<{ investigations: unknown[] }>("/investigations")
         .then((d) => setCctnsCount(d.investigations.length))
+        .catch(() => {});
+      apiRequest<{ summary: { pending: number } | null }>("/pg/summary")
+        .then((d) => setPgPendingCount(d.summary?.pending ?? 0))
         .catch(() => {});
     }, [user?.role])
   );
@@ -78,6 +82,9 @@ export default function DashboardScreen() {
         .catch(() => {});
       apiRequest<{ applications: unknown[] }>("/jansunwai/pending")
         .then((d) => setIgrsPendingCount(d.applications.length))
+        .catch(() => {});
+      apiRequest<{ summary: { pending: number } | null }>("/pg/summary")
+        .then((d) => setPgPendingCount(d.summary?.pending ?? 0))
         .catch(() => {});
     }, [user?.role])
   );
@@ -207,6 +214,16 @@ export default function DashboardScreen() {
             tone="purple"
             onPress={() => router.push("/(app)/reports/new")}
           />
+          <Card
+            title="Public Grievance (PG)"
+            description="Pending public grievance complaints assigned to you."
+            meta="View"
+            icon="people"
+            tone="rose"
+            count={pgPendingCount}
+            countColor={pgPendingCount != null && pgPendingCount >= 10 ? "red" : "blue"}
+            onPress={() => router.push("/(app)/pg")}
+          />
         </View>
       )}
 
@@ -249,6 +266,16 @@ export default function DashboardScreen() {
             icon="assignment-ind"
             tone="indigo"
             onPress={() => router.push("/(app)/igrs/allotment")}
+          />
+          <Card
+            title="Public Grievance (PG)"
+            description="Pending public grievance complaints from the PG portal — पब्लिक ग्रीवांस."
+            meta="View"
+            icon="people"
+            tone="rose"
+            count={pgPendingCount}
+            countColor={pgPendingCount != null && pgPendingCount >= 5 ? "red" : "blue"}
+            onPress={() => router.push("/(app)/pg")}
           />
 
           {user.role === "admin" && (

@@ -44,4 +44,7 @@ export const env = {
 
   policeStationName: optional("POLICE_STATION_NAME"),
   policeDistrictName: optional("POLICE_DISTRICT_NAME"),
+
+  // Public Grievance portal — uses same CUG credentials as CCTNS
+  pgPortalUrl: optional("PG_PORTAL_URL", "https://ts.uppolice.gov.in"),
 };
