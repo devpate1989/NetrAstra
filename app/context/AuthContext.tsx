@@ -9,6 +9,9 @@ interface AuthContextValue {
   session: Session | null;
   user: AppUser | null;
   isLoading: boolean;
+  /** Called after a successful login — skips the /profile/me round-trip by
+   *  using the profile data already returned by the login endpoint. */
+  loginWithProfile: (user: AppUser) => void;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -68,7 +71,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       setSession(nextSession);
       if (nextSession) {
-        await loadProfile();
+        // If loginWithProfile() was already called (fast-path from login screen),
+        // user is already set — skip the /profile/me round-trip.
+        // We use a functional update to read the latest user without a stale closure.
+        setUser((currentUser) => {
+          if (!currentUser) {
+            // No user yet — kick off loadProfile() asynchronously
+            loadProfile();
+          }
+          return currentUser;
+        });
       } else {
         setUser(null);
       }
@@ -85,6 +97,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user,
       isLoading,
+      loginWithProfile: (profile: AppUser) => {
+        setUser(profile);
+        // Kick off push-token registration in background without blocking nav
+        registerForPushNotificationsAsync().catch(() => {});
+      },
       refreshProfile: loadProfile,
       signOut: async () => {
         await supabase.auth.signOut();
