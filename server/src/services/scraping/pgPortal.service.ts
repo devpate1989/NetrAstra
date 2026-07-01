@@ -28,6 +28,12 @@ const PG = {
   pendingSpan:     "#ContentPlaceHolder1_lblPendingApplication",
   above10Span:     "#ContentPlaceHolder1_lblPendingAboveTenDaysApplication",
   psNameSpan:      "#ContentPlaceHolder1_lblPSName",
+
+  // Dashboard date-range search for complaint listing
+  fromDateInput:   "#ContentPlaceHolder1_txtFromDate",
+  toDateInput:     "#ContentPlaceHolder1_txtEndDate",
+  searchBtn:       "#ContentPlaceHolder1_btnSearch",
+  complaintTable:  "#ContentPlaceHolder1_gdvComplaintDetails",
 } as const;
 
 export interface PgScrapeResult {
@@ -162,16 +168,50 @@ export async function runPgComplaintsScrape(): Promise<PgScrapeResult> {
         return { ranAt, scraped: 0, stored: 0, skipped: true, reason: "Login failed" };
       }
 
-      await driver.get(base() + PG.allListPath);
+      // Use the dashboard with a wide date range (01/01/2020 → today) to get all complaints
+      await driver.get(base() + PG.dashboardPath);
       await driver.sleep(2_500);
 
+      const today = new Date();
+      const todayStr = `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
+      // Portal minimum allowed from-date is 01/01/2023
+      const fromDateStr = "01/01/2023";
+
+      // Set date fields via JS to bypass masked-input controls
+      await driver.executeScript(`
+        const fromEl = document.querySelector('#ContentPlaceHolder1_txtFromDate');
+        const toEl   = document.querySelector('#ContentPlaceHolder1_txtEndDate');
+        if (fromEl) fromEl.value = arguments[0];
+        if (toEl)   toEl.value   = arguments[1];
+      `, fromDateStr, todayStr);
+      await driver.sleep(500);
+
+      // Submit the search
+      const searchBtn = await driver.findElement({ css: PG.searchBtn }).catch(() => null);
+      if (searchBtn) {
+        await driver.executeScript("arguments[0].click()", searchBtn);
+        await driver.sleep(1_000);
+        // Dismiss any validation alert that might appear
+        try {
+          const alert = await driver.switchTo().alert();
+          const alertText = await alert.getText();
+          console.log(`[pg-scraper] Alert dismissed: ${alertText}`);
+          await alert.accept();
+          await driver.sleep(500);
+        } catch {
+          // no alert
+        }
+        await driver.sleep(3_000);
+      }
+
       const rows = await driver.executeScript<Record<string, string>[]>(`
-        const table = document.querySelector('#ContentPlaceHolder1_gdvComplaintDetails,table[id*="gdv"],table[id*="Grid"]');
+        const table = document.querySelector('#ContentPlaceHolder1_gdvComplaintDetails');
         if (!table) return [];
         const headers = Array.from(table.rows[0]?.cells || []).map(c => c.textContent.trim());
         const result = [];
         for (let i = 1; i < table.rows.length; i++) {
           const cells = Array.from(table.rows[i].cells).map(c => c.textContent.trim());
+          if (cells.every(c => !c)) continue; // skip empty rows
           const row = {};
           headers.forEach((h, j) => { row[h || 'col' + j] = cells[j] || ''; });
           result.push(row);
