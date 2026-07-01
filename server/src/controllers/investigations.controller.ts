@@ -133,3 +133,30 @@ export const syncFirPdfs = asyncHandler(async (_req: Request, res: Response) => 
   });
   res.json({ result });
 });
+
+/**
+ * GET /investigations/io-summary — IO-wise pending count with name normalization.
+ * Strips trailing " -" / whitespace from scraped IO names so the same officer
+ * doesn't appear as two rows (e.g. "AAKIL HUSAIN -" and "AAKIL HUSAIN").
+ */
+export const getIoSummary = asyncHandler(async (_req: Request, res: Response) => {
+  const { data, error } = await supabaseAdmin
+    .from("investigations")
+    .select("io_name");
+
+  if (error) throw new HttpError(400, error.message);
+
+  // Count per normalized IO name
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    const raw = (row.io_name as string | null)?.trim() ?? "Unassigned";
+    const clean = raw.replace(/\s*-\s*$/, "").trim() || "Unassigned";
+    counts.set(clean, (counts.get(clean) ?? 0) + 1);
+  }
+
+  const result = [...counts.entries()]
+    .map(([ioName, pendingCount]) => ({ ioName, pendingCount }))
+    .sort((a, b) => b.pendingCount - a.pendingCount);
+
+  res.json({ summary: result, total: (data ?? []).length });
+});

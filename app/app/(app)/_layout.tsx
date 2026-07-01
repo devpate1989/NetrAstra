@@ -73,6 +73,7 @@ export default function AppLayout() {
       {/* Sub-routes — never show as tabs */}
       <Tabs.Screen name="notifications" options={{ href: null }} />
       <Tabs.Screen name="pg" options={{ href: null }} />
+      <Tabs.Screen name="investigations/io-summary" options={{ href: null }} />
       <Tabs.Screen name="igrs/pendency" options={{ href: null }} />
       <Tabs.Screen name="igrs/pending-list" options={{ href: null }} />
       <Tabs.Screen name="admin/users" options={{ href: null }} />

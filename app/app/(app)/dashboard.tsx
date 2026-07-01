@@ -260,6 +260,14 @@ export default function DashboardScreen() {
             onPress={() => router.push("/(app)/investigations")}
           />
           <Card
+            title="IO-wise Pendency Report"
+            description="All Investigating Officers ranked by their pending FIR count — tap any IO to view their cases."
+            meta="View"
+            icon="table-chart"
+            tone="rose"
+            onPress={() => router.push("/(app)/investigations/io-summary")}
+          />
+          <Card
             title="IGRS Allotment (जनसुनवाई)"
             description="View pending IGRS applications and allot each one to an Investigating Officer."
             meta="Open"
