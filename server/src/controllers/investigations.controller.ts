@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { z } from "zod";
 import { supabaseAdmin } from "../config/supabase";
 import { asyncHandler, HttpError } from "../middleware/errorHandler";
-import { runCctnsInvestigationsScrape } from "../services/scraping/cctnsPortal.service";
+import { runCctnsInvestigationsScrape, runCctnsFirPdfScrape } from "../services/scraping/cctnsPortal.service";
 import { matchIoName } from "../services/ai.service";
 import { raceOrBackground } from "../utils/backgroundRefresh";
 
@@ -122,6 +122,14 @@ export const refreshInvestigations = asyncHandler(async (_req: Request, res: Res
   const result = await raceOrBackground(runCctnsInvestigationsScrape(), "cctns", (r) => {
     if (r.skipped) console.log(`[cctns] on-demand refresh skipped: ${r.reason}`);
     else console.log(`[cctns] on-demand refresh stored ${r.stored}/${r.scraped}`);
+  });
+  res.json({ result });
+});
+
+/** POST /investigations/pdf-sync — download FIR PDFs from CCTNS FIRViewDetail.aspx */
+export const syncFirPdfs = asyncHandler(async (_req: Request, res: Response) => {
+  const result = await raceOrBackground(runCctnsFirPdfScrape(), "cctns-pdf", (r) => {
+    console.log(`[cctns-pdf] sync: stored=${r.stored}/${r.scraped}`);
   });
   res.json({ result });
 });

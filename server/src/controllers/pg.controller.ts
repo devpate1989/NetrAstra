@@ -41,3 +41,13 @@ export const refreshPg = asyncHandler(async (_req: Request, res: Response) => {
   });
   res.json({ result });
 });
+
+import { runPgPdfScrape } from "../services/scraping/pgPortal.service";
+
+/** POST /pg/pdf-sync — download PDFs for all PG complaints lacking petition_url */
+export const syncPgPdfs = asyncHandler(async (_req: Request, res: Response) => {
+  const result = await raceOrBackground(runPgPdfScrape(), "pg-pdf", (r) => {
+    console.log(`[pg-pdf] sync complete: stored=${r.stored}/${r.scraped}`);
+  });
+  res.json({ result });
+});

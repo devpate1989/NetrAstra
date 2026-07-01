@@ -10,6 +10,7 @@ import {
   listReferenceSummary,
   refreshApplications,
   refreshReferenceSummary,
+  syncJansunwaiPdfs,
 } from "../controllers/jansunwai.controller";
 
 export const jansunwaiRouter = Router();
@@ -35,4 +36,5 @@ jansunwaiRouter.post(
 
 // Shared
 jansunwaiRouter.post("/refresh", scrapeRateLimiter, refreshApplications);
+jansunwaiRouter.post("/pdf-sync", requireRole("sho", "admin"), scrapeRateLimiter, syncJansunwaiPdfs);
 jansunwaiRouter.get("/:id", getApplication);

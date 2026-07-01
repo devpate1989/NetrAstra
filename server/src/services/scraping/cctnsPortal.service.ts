@@ -1,9 +1,10 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { WebDriver } from "selenium-webdriver";
 import { env } from "../../config/env";
 import { supabaseAdmin } from "../../config/supabase";
-import { withDriver } from "./browser";
+import { withDriver, withDownloadDriver } from "./browser";
 
 async function debugSnapshot(driver: WebDriver, tag: string): Promise<void> {
   try {
@@ -420,5 +421,166 @@ export async function runCctnsInvestigationsScrape(): Promise<CctnsScrapeResult>
       ranAt, scraped: 0, stored: 0, skipped: true,
       reason: err instanceof Error ? err.message : "Unknown scrape error",
     };
+  }
+}
+
+/** Selectors for FIRViewDetail.aspx search form — confirmed from live DOM. */
+const FIR_DETAIL = {
+  districtSelect:   "#ContentPlaceHolder1_ddlDistrictFirSearch",
+  psSelect:         "#ContentPlaceHolder1_ddlPoliceStationFirSearch",
+  yearInput:        "#ContentPlaceHolder1_txtFIRRegYear",
+  firNoInput:       "#ContentPlaceHolder1_txtFirNoSearch",
+  searchBtn:        "#ContentPlaceHolder1_btnSearchFir",
+  printBtn:         "#ContentPlaceHolder1_btnPrint",
+  firDetailPath:    "/CCTNSWEB/Registration/FIR/FIRViewDetail.aspx",
+} as const;
+
+/**
+ * Downloads FIR PDFs from CCTNS by navigating to FIRViewDetail.aspx,
+ * searching for each FIR by district/PS/year/number, and clicking "छपाई" (Print)
+ * which triggers a server-side PDF download.
+ *
+ * Skips FIRs that already have a record in cctns_fir_files.
+ * Processes up to 20 FIRs per run to avoid sessions timing out.
+ */
+export async function runCctnsFirPdfScrape(): Promise<CctnsScrapeResult> {
+  const ranAt = new Date().toISOString();
+
+  if (!isConfigured()) {
+    return { ranAt, scraped: 0, stored: 0, skipped: true, reason: "CCTNS portal not configured" };
+  }
+
+  // Fetch FIRs not yet downloaded
+  const { data: pending } = await supabaseAdmin
+    .from("investigations")
+    .select("id, external_reference")
+    .not("external_reference", "is", null)
+    .order("registered_on", { ascending: false })
+    .limit(20);
+
+  if (!pending || pending.length === 0) {
+    return { ranAt, scraped: 0, stored: 0, skipped: false };
+  }
+
+  // Filter to those not already in cctns_fir_files
+  const { data: existing } = await supabaseAdmin
+    .from("cctns_fir_files")
+    .select("external_reference");
+  const downloaded = new Set((existing || []).map((r: { external_reference: string }) => r.external_reference));
+  const toDownload = pending.filter((r: { id: string; external_reference: string }) => !downloaded.has(r.external_reference));
+
+  if (toDownload.length === 0) {
+    console.log("[cctns-pdf] All FIRs already downloaded");
+    return { ranAt, scraped: 0, stored: 0, skipped: false };
+  }
+
+  const downloadDir = path.join(os.tmpdir(), "cctns-fir-pdfs");
+  fs.mkdirSync(downloadDir, { recursive: true });
+
+  try {
+    return await withDownloadDriver(downloadDir, async (driver) => {
+      const loggedIn = await login(driver);
+      if (!loggedIn) {
+        return { ranAt, scraped: 0, stored: 0, skipped: true, reason: "CCTNS login failed" };
+      }
+
+      await driver.get(baseUrl() + FIR_DETAIL.firDetailPath);
+      await driver.sleep(2_500);
+
+      // Set district (cascade will auto-load PS options)
+      await driver.executeScript(
+        `var el=document.querySelector(arguments[0]); if(el){el.value=arguments[1]; el.dispatchEvent(new Event('change'));}`,
+        FIR_DETAIL.districtSelect, env.cctnsDistrictId
+      );
+      await driver.sleep(2_000); // wait for PS cascade
+
+      // Set police station
+      await driver.executeScript(
+        `var el=document.querySelector(arguments[0]); if(el){el.value=arguments[1]; el.dispatchEvent(new Event('change'));}`,
+        FIR_DETAIL.psSelect, env.cctnsPsId
+      );
+      await driver.sleep(500);
+
+      let stored = 0;
+
+      for (const fir of toDownload) {
+        const ref = fir.external_reference; // e.g. "0099/2026"
+        const parts = ref.split("/");
+        if (parts.length !== 2) continue;
+        const [firNo, year] = parts; // "0099", "2026"
+
+        // Clear downloads
+        fs.readdirSync(downloadDir).forEach(f => fs.unlinkSync(path.join(downloadDir, f)));
+
+        // Set year and FIR number
+        await driver.executeScript(
+          `var yr=document.querySelector(arguments[0]); var fn=document.querySelector(arguments[1]);
+           if(yr) yr.value=arguments[2]; if(fn) fn.value=arguments[3];`,
+          FIR_DETAIL.yearInput, FIR_DETAIL.firNoInput, year, firNo
+        );
+        await driver.sleep(300);
+
+        // Submit search
+        await driver.executeScript(`document.querySelector(arguments[0])?.click()`, FIR_DETAIL.searchBtn);
+        await driver.sleep(3_000);
+
+        // Check if FIR loaded (print button should be visible)
+        const printBtnVisible = await driver.executeScript<boolean>(
+          `const btn=document.querySelector(arguments[0]); return !!(btn && btn.offsetParent !== null)`,
+          FIR_DETAIL.printBtn
+        );
+
+        if (!printBtnVisible) {
+          console.warn(`[cctns-pdf] FIR ${ref}: print button not visible after search (FIR may not be found)`);
+          continue;
+        }
+
+        // Click print — triggers server-side PDF generation/download
+        await driver.executeScript(`document.querySelector(arguments[0])?.click()`, FIR_DETAIL.printBtn);
+        await driver.sleep(1_000);
+
+        // Wait for PDF file to download (up to 20s)
+        const deadline = Date.now() + 20_000;
+        let downloadedPath: string | null = null;
+        while (Date.now() < deadline) {
+          const files = fs.readdirSync(downloadDir).filter(f => !f.endsWith(".crdownload") && !f.endsWith(".tmp"));
+          if (files.length > 0) { downloadedPath = path.join(downloadDir, files[0]); break; }
+          await new Promise(r => setTimeout(r, 500));
+        }
+
+        if (!downloadedPath) {
+          console.warn(`[cctns-pdf] FIR ${ref}: no PDF downloaded (print may open a window instead of file)`);
+          continue;
+        }
+
+        const pdfBytes = fs.readFileSync(downloadedPath);
+        const filename = path.basename(downloadedPath) || `FIR_${firNo}_${year}.pdf`;
+        const storagePath = `${year}/${firNo}/${filename}`;
+
+        const { error: uploadErr } = await supabaseAdmin.storage
+          .from("cctns-firs")
+          .upload(storagePath, pdfBytes, { contentType: "application/pdf", upsert: true });
+
+        if (uploadErr) {
+          console.error(`[cctns-pdf] Upload failed for FIR ${ref}:`, uploadErr.message);
+          continue;
+        }
+
+        const { data: urlData } = supabaseAdmin.storage.from("cctns-firs").getPublicUrl(storagePath);
+
+        await supabaseAdmin.from("cctns_fir_files").upsert(
+          { external_reference: ref, file_path: storagePath, file_size_bytes: pdfBytes.length, downloaded_at: new Date().toISOString() },
+          { onConflict: "external_reference" }
+        );
+
+        console.log(`[cctns-pdf] FIR ${ref} PDF stored: ${storagePath} (${pdfBytes.length} bytes)`);
+        stored++;
+      }
+
+      return { ranAt, scraped: toDownload.length, stored, skipped: false };
+    });
+  } catch (err) {
+    console.error("[cctns-pdf] PDF scrape failed:", err);
+    return { ranAt, scraped: 0, stored: 0, skipped: true, reason: err instanceof Error ? err.message : "Unknown error" };
   }
 }

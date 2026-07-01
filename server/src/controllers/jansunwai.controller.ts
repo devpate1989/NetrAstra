@@ -6,6 +6,7 @@ import {
   JANSUNWAI_PETITIONS_BUCKET,
   runJanSunwaiReferenceSummaryScrape,
   runJanSunwaiScrape,
+  runJanSunwaiPetitionPdfScrape,
 } from "../services/scraping/janSunwaiPortal.service";
 import { raceOrBackground } from "../utils/backgroundRefresh";
 import { createNotification } from "../services/notifications.service";
@@ -293,4 +294,12 @@ export const allotApplication = asyncHandler(async (req: Request, res: Response)
 
   const chowkiNames = await loadChowkiNames([row]);
   res.json({ application: toAllotmentDto(row, chowkiNames) });
+});
+
+/** POST /jansunwai/pdf-sync — download petition PDFs for applications without one */
+export const syncJansunwaiPdfs = asyncHandler(async (_req: Request, res: Response) => {
+  const result = await raceOrBackground(runJanSunwaiPetitionPdfScrape(), "jansunwai-pdf", (r) => {
+    console.log(`[jansunwai-pdf] sync: stored=${r.stored}/${r.scraped}`);
+  });
+  res.json({ result });
 });
