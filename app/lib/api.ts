@@ -65,11 +65,22 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   const isJson = response.headers.get("content-type")?.includes("application/json");
-  const payload = isJson ? await response.json().catch(() => null) : null;
+  // Use try/catch (not just .catch()) because Hermes's native Fetch can throw
+  // synchronously from response.json() on an empty body, which .catch() alone
+  // wouldn't intercept when the throw happens before the Promise is settled.
+  let payload: unknown = null;
+  if (isJson) {
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+  }
 
+  const p = payload as Record<string, unknown> | null;
   if (!response.ok) {
-    const message = (payload && (payload.error || payload.message)) || response.statusText;
-    throw new ApiError(response.status, message, payload?.details);
+    const message = (p && ((p.error as string) || (p.message as string))) || response.statusText;
+    throw new ApiError(response.status, message, p?.details);
   }
 
   return payload as T;
