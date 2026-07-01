@@ -29,11 +29,8 @@ const PG = {
   above10Span:     "#ContentPlaceHolder1_lblPendingAboveTenDaysApplication",
   psNameSpan:      "#ContentPlaceHolder1_lblPSName",
 
-  // Dashboard date-range search for complaint listing
-  fromDateInput:   "#ContentPlaceHolder1_txtFromDate",
-  toDateInput:     "#ContentPlaceHolder1_txtEndDate",
-  searchBtn:       "#ContentPlaceHolder1_btnSearch",
-  complaintTable:  "#ContentPlaceHolder1_gdvComplaintDetails",
+  // All-complaints listing page (no date filter needed)
+  complaintTable:  "#ContentPlaceHolder1_grvComplainantDetail",
 } as const;
 
 export interface PgScrapeResult {
@@ -168,53 +165,31 @@ export async function runPgComplaintsScrape(): Promise<PgScrapeResult> {
         return { ranAt, scraped: 0, stored: 0, skipped: true, reason: "Login failed" };
       }
 
-      // Use the dashboard with a wide date range (01/01/2020 → today) to get all complaints
-      await driver.get(base() + PG.dashboardPath);
-      await driver.sleep(2_500);
+      // DisplayAllComplaints.aspx shows ALL pending complaints with no date filter.
+      // Confirmed from live DOM: table is #ContentPlaceHolder1_grvComplainantDetail,
+      // columns: serial, complaint_no (link), name, PS, district, date, IO name/mobile, PDF.
+      await driver.get(base() + PG.allListPath);
+      await driver.sleep(3_000);
 
-      const today = new Date();
-      const todayStr = `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
-      // Portal minimum allowed from-date is 01/01/2023
-      const fromDateStr = "01/01/2023";
-
-      // Set date fields via JS to bypass masked-input controls
-      await driver.executeScript(`
-        const fromEl = document.querySelector('#ContentPlaceHolder1_txtFromDate');
-        const toEl   = document.querySelector('#ContentPlaceHolder1_txtEndDate');
-        if (fromEl) fromEl.value = arguments[0];
-        if (toEl)   toEl.value   = arguments[1];
-      `, fromDateStr, todayStr);
-      await driver.sleep(500);
-
-      // Submit the search
-      const searchBtn = await driver.findElement({ css: PG.searchBtn }).catch(() => null);
-      if (searchBtn) {
-        await driver.executeScript("arguments[0].click()", searchBtn);
-        await driver.sleep(1_000);
-        // Dismiss any validation alert that might appear
-        try {
-          const alert = await driver.switchTo().alert();
-          const alertText = await alert.getText();
-          console.log(`[pg-scraper] Alert dismissed: ${alertText}`);
-          await alert.accept();
-          await driver.sleep(500);
-        } catch {
-          // no alert
-        }
-        await driver.sleep(3_000);
-      }
-
-      const rows = await driver.executeScript<Record<string, string>[]>(`
-        const table = document.querySelector('#ContentPlaceHolder1_gdvComplaintDetails');
+      interface PgRow { complaintNo: string; applicantName: string; policeStation: string; district: string; date: string; ioNameMobile: string; }
+      const rows = await driver.executeScript<PgRow[]>(`
+        const table = document.querySelector('#ContentPlaceHolder1_grvComplainantDetail');
         if (!table) return [];
-        const headers = Array.from(table.rows[0]?.cells || []).map(c => c.textContent.trim());
         const result = [];
         for (let i = 1; i < table.rows.length; i++) {
-          const cells = Array.from(table.rows[i].cells).map(c => c.textContent.trim());
-          if (cells.every(c => !c)) continue; // skip empty rows
-          const row = {};
-          headers.forEach((h, j) => { row[h || 'col' + j] = cells[j] || ''; });
-          result.push(row);
+          const cells = Array.from(table.rows[i].cells);
+          if (cells.length < 6) continue;
+          const complaintLink = cells[1].querySelector('a');
+          const complaintNo = complaintLink ? complaintLink.textContent.trim() : cells[1].textContent.trim();
+          if (!complaintNo) continue;
+          result.push({
+            complaintNo:   complaintNo,
+            applicantName: cells[2].textContent.trim(),
+            policeStation: cells[3].textContent.trim(),
+            district:      cells[4].textContent.trim(),
+            date:          cells[5].textContent.trim(),
+            ioNameMobile:  cells[6] ? cells[6].textContent.trim() : '',
+          });
         }
         return result;
       `);
@@ -228,26 +203,38 @@ export async function runPgComplaintsScrape(): Promise<PgScrapeResult> {
 
       let stored = 0;
       for (const row of rows) {
-        const complaintNo = row["Complaint No"] || row["आवेदन क्र."] || row["Sr.No"] || Object.values(row)[0];
-        if (!complaintNo?.trim()) continue;
+        if (!row.complaintNo) continue;
+
+        // Parse date: "DD/MM/YYYY" → ISO
+        let dateIso: string | null = null;
+        if (row.date) {
+          const parts = row.date.trim().split("/");
+          if (parts.length === 3) dateIso = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+
+        // IO name and mobile are combined "नाम /MOBILE" — split on last space
+        const ioRaw = row.ioNameMobile || "";
+        const slashIdx = ioRaw.lastIndexOf("/");
+        const ioName   = slashIdx > 0 ? ioRaw.slice(0, slashIdx).trim() : ioRaw.trim();
+        const ioMobile = slashIdx > 0 ? ioRaw.slice(slashIdx + 1).trim() : null;
 
         const { error } = await supabaseAdmin.from("public_grievances").upsert(
           {
-            complaint_no:       complaintNo.trim(),
-            applicant_name:     row["Applicant Name"] || row["आवेदक का नाम"] || null,
-            mobile:             row["Mobile"] || row["मोबाइल"] || null,
-            complaint_category: row["Category"] || row["श्रेणी"] || null,
-            complaint_details:  row["Details"] || row["विवरण"] || null,
-            status:             row["Status"] || row["स्थिति"] || "pending",
-            assigned_io:        row["Assigned IO"] || row["विवेचक"] || null,
-            date_of_complaint:  null,
-            raw_data:           row,
-            scraped_at:         ranAt,
+            complaint_no:      row.complaintNo,
+            applicant_name:    row.applicantName || null,
+            mobile:            ioMobile,
+            police_station:    row.policeStation || null,
+            district:          row.district || null,
+            assigned_io:       ioName || null,
+            date_of_complaint: dateIso,
+            status:            "pending",
+            raw_data:          row,
+            scraped_at:        ranAt,
           },
           { onConflict: "complaint_no" }
         );
 
-        if (error) console.error(`[pg-scraper] Failed to store complaint ${complaintNo}:`, error.message);
+        if (error) console.error(`[pg-scraper] Failed to store ${row.complaintNo}:`, error.message);
         else stored++;
       }
 
