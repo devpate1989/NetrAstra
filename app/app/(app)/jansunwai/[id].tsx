@@ -122,23 +122,19 @@ export default function JanSunwaiDetailScreen() {
 
       <Text className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">प्रार्थना पत्र (Petition)</Text>
       <View className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-        {application.petitionFormat === "pdf" ? (
-          application.petitionDownloadUrl ? (
-            <PrimaryButton
-              label={opening ? "Opening…" : "View / download PDF"}
-              onPress={handleOpenPetition}
-              loading={opening}
-              variant="outline"
-              icon="picture-as-pdf"
-            />
-          ) : (
-            <Text className="text-sm text-slate-500">The PDF could not be retrieved from the portal yet.</Text>
-          )
-        ) : application.petitionText ? (
-          <Text className="text-sm leading-6 text-slate-800">{application.petitionText}</Text>
-        ) : (
-          <Text className="text-sm text-slate-500">No petition text is available for this application.</Text>
-        )}
+        {/* Always show PDF button — available once PDF sync has run */}
+        <PrimaryButton
+          label={opening ? "Opening…" : application.petitionDownloadUrl ? "View / download PDF" : "PDF not yet synced"}
+          onPress={application.petitionDownloadUrl ? handleOpenPetition : () => {}}
+          loading={opening}
+          variant="outline"
+          icon="picture-as-pdf"
+        />
+        {application.petitionText ? (
+          <Text className="mt-3 text-sm leading-6 text-slate-800">{application.petitionText}</Text>
+        ) : !application.petitionDownloadUrl ? (
+          <Text className="mt-2 text-xs text-slate-400">Tap "Sync now" on dashboard to download the petition PDF.</Text>
+        ) : null}
       </View>
 
       {canCreateReport ? (

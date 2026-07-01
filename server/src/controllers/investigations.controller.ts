@@ -160,3 +160,30 @@ export const getIoSummary = asyncHandler(async (_req: Request, res: Response) =>
 
   res.json({ summary: result, total: (data ?? []).length });
 });
+
+const FIR_PDF_SIGNED_URL_TTL = 60 * 60; // 1 hour
+
+/** GET /investigations/fir-pdf/:externalRef — returns signed URL for a downloaded FIR PDF */
+export const getFirPdfUrl = asyncHandler(async (req: Request, res: Response) => {
+  const ref = req.params.externalRef;
+  const { data: firFile } = await supabaseAdmin
+    .from("cctns_fir_files")
+    .select("file_path")
+    .eq("external_reference", ref)
+    .single();
+
+  if (!firFile?.file_path) {
+    res.json({ url: null, message: "FIR PDF not yet downloaded." });
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin.storage
+    .from("cctns-firs")
+    .createSignedUrl(firFile.file_path, FIR_PDF_SIGNED_URL_TTL);
+
+  if (error || !data?.signedUrl) {
+    res.json({ url: null, message: "Could not generate FIR PDF link." });
+    return;
+  }
+  res.json({ url: data.signedUrl, externalReference: ref });
+});

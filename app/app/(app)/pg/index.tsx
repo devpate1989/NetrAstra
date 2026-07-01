@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, View } from "react-native";
+import { ActivityIndicator, FlatList, Linking, Pressable, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/build/MaterialIcons";
 import { Text } from "../../../components/Text";
 import { useFocusEffect } from "expo-router";
@@ -24,6 +24,44 @@ function StatusBadge({ status }: { status: string | null }) {
     <View style={{ backgroundColor: bg }} className="rounded-full px-2 py-0.5 self-start">
       <Text className="text-[10px] font-semibold text-white">{status || "Unknown"}</Text>
     </View>
+  );
+}
+
+function PdfButton({ complaintId }: { complaintId: string }) {
+  const [state, setState] = useState<"idle" | "loading" | "error">("idle");
+
+  const handlePdf = async () => {
+    setState("loading");
+    try {
+      const data = await apiRequest<{ url: string | null; message?: string }>(`/pg/${complaintId}/pdf`);
+      if (data.url) {
+        await Linking.openURL(data.url);
+        setState("idle");
+      } else {
+        setState("error");
+        setTimeout(() => setState("idle"), 3000);
+      }
+    } catch {
+      setState("error");
+      setTimeout(() => setState("idle"), 3000);
+    }
+  };
+
+  return (
+    <Pressable
+      onPress={handlePdf}
+      disabled={state === "loading"}
+      className="flex-row items-center gap-1 rounded-lg border border-violet-300 bg-violet-50 px-3 py-1.5 active:opacity-70"
+    >
+      <MaterialIcons
+        name={state === "loading" ? "hourglass-empty" : state === "error" ? "error-outline" : "picture-as-pdf"}
+        size={14}
+        color={state === "error" ? "#dc2626" : "#7c3aed"}
+      />
+      <Text className={`text-xs font-semibold ${state === "error" ? "text-red-600" : "text-violet-700"}`}>
+        {state === "loading" ? "Loading…" : state === "error" ? "Not available" : "View PDF"}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -65,6 +103,11 @@ function ComplaintCard({ item }: { item: PgComplaint }) {
             <Text className="text-xs text-slate-500">{item.assignedIo}</Text>
           </View>
         ) : null}
+
+        {/* PDF download button */}
+        <View className="mt-3">
+          <PdfButton complaintId={item.id} />
+        </View>
       </View>
     </View>
   );

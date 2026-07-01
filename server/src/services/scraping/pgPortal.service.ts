@@ -339,12 +339,11 @@ export async function runPgPdfScrape(): Promise<PgScrapeResult> {
           continue;
         }
 
-        const { data: urlData } = supabaseAdmin.storage.from("pg-complaints").getPublicUrl(storagePath);
-        const petitionUrl = urlData.publicUrl;
-
+        // Store storagePath (not publicUrl) — the bucket is private so we generate
+        // signed URLs on demand from /pg/:id/pdf when the app needs to open it.
         await supabaseAdmin
           .from("public_grievances")
-          .update({ petition_url: petitionUrl })
+          .update({ petition_url: storagePath })
           .eq("id", complaint.id);
 
         console.log(`[pg-pdf] Stored PDF for ${complaint.complaint_no}: ${storagePath}`);

@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, FlatList, Linking, Pressable, ScrollView, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/build/MaterialIcons";
 import { Text } from "../../components/Text";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -41,6 +41,29 @@ const AGE_BUCKETS: { key: AgeBucket; label: string; sublabel: string; bg: string
 ];
 
 interface EditState { ioName: string; section: string; }
+
+function FirPdfButton({ externalReference }: { externalReference: string | null }) {
+  const [state, setState] = useState<"idle" | "loading" | "error">("idle");
+  if (!externalReference) return null;
+  const handle = async () => {
+    setState("loading");
+    try {
+      const d = await apiRequest<{ url: string | null }>(`/investigations/fir-pdf/${encodeURIComponent(externalReference)}`);
+      if (d.url) { await Linking.openURL(d.url); setState("idle"); }
+      else { setState("error"); setTimeout(() => setState("idle"), 3000); }
+    } catch { setState("error"); setTimeout(() => setState("idle"), 3000); }
+  };
+  return (
+    <Pressable onPress={handle} disabled={state === "loading"}
+      className="flex-row items-center gap-1 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 active:opacity-70">
+      <MaterialIcons name={state === "loading" ? "hourglass-empty" : state === "error" ? "error-outline" : "picture-as-pdf"} size={14}
+        color={state === "error" ? "#dc2626" : "#e11d48"} />
+      <Text className={`text-xs font-semibold ${state === "error" ? "text-red-600" : "text-rose-700"}`}>
+        {state === "loading" ? "Loading…" : state === "error" ? "Not available" : "FIR PDF"}
+      </Text>
+    </Pressable>
+  );
+}
 
 const CaseRow = memo(function CaseRow({
   item, canEdit, saving, onSave, showIoName,
@@ -88,12 +111,18 @@ const CaseRow = memo(function CaseRow({
             </View>
           </View>
         ) : (
-          <View className="mt-2 flex-row flex-wrap items-center gap-2">
-            <View className="rounded-full bg-slate-100 px-3 py-1">
-              <Text className="text-xs text-slate-600">धारा: {item.section || "—"}</Text>
+          <View>
+            <View className="mt-2 flex-row flex-wrap items-center gap-2">
+              <View className="rounded-full bg-slate-100 px-3 py-1">
+                <Text className="text-xs text-slate-600">धारा: {item.section || "—"}</Text>
+              </View>
+              {item.caseStatus ? <View className="rounded-full bg-amber-100 px-3 py-1"><Text className="text-xs text-amber-700">{item.caseStatus}</Text></View> : null}
+              {canEdit ? <Pressable onPress={() => { setDraft({ ioName: item.ioName ?? "", section: item.section ?? "" }); setEditing(true); }} className="ml-auto rounded-full border border-brand-600 px-3 py-1"><Text className="text-xs font-medium text-brand-600">Edit</Text></Pressable> : null}
             </View>
-            {item.caseStatus ? <View className="rounded-full bg-amber-100 px-3 py-1"><Text className="text-xs text-amber-700">{item.caseStatus}</Text></View> : null}
-            {canEdit ? <Pressable onPress={() => { setDraft({ ioName: item.ioName ?? "", section: item.section ?? "" }); setEditing(true); }} className="ml-auto rounded-full border border-brand-600 px-3 py-1"><Text className="text-xs font-medium text-brand-600">Edit</Text></Pressable> : null}
+            {/* FIR PDF download */}
+            <View className="mt-2">
+              <FirPdfButton externalReference={item.externalReference} />
+            </View>
           </View>
         )}
       </View>

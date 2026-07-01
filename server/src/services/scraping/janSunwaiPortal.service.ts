@@ -690,11 +690,11 @@ export async function runJanSunwaiPetitionPdfScrape(): Promise<JanSunwaiScrapeRe
             continue;
           }
 
-          const { data: urlData } = supabaseAdmin.storage.from("jansunwai-petitions").getPublicUrl(storagePath);
+          
 
           await supabaseAdmin
             .from("jansunwai_applications")
-            .update({ petition_url: urlData.publicUrl, petition_format: "pdf" })
+            .update({ petition_url: storagePath, petition_format: "pdf" })
             .eq("id", app.id);
 
           console.log(`[jansunwai-pdf] Stored petition PDF for ${appNo}`);

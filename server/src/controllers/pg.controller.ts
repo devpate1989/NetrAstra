@@ -51,3 +51,30 @@ export const syncPgPdfs = asyncHandler(async (_req: Request, res: Response) => {
   });
   res.json({ result });
 });
+
+const PDF_SIGNED_URL_TTL = 60 * 60; // 1 hour
+
+/** GET /pg/:id/pdf — returns a signed URL for a PG complaint's petition PDF */
+export const getPgPdfUrl = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { data: complaint } = await supabaseAdmin
+    .from("public_grievances")
+    .select("petition_url, complaint_no")
+    .eq("id", id)
+    .single();
+
+  if (!complaint?.petition_url) {
+    res.json({ url: null, message: "PDF not yet downloaded — tap 'Refresh' to sync portal PDFs." });
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin.storage
+    .from("pg-complaints")
+    .createSignedUrl(complaint.petition_url, PDF_SIGNED_URL_TTL);
+
+  if (error || !data?.signedUrl) {
+    res.json({ url: null, message: "Could not generate PDF link." });
+    return;
+  }
+  res.json({ url: data.signedUrl, complaintNo: complaint.complaint_no });
+});
