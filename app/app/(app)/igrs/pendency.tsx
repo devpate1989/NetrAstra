@@ -81,6 +81,25 @@ export default function IgrsPendencyScreen() {
 
   return (
     <ScreenContainer title="Pending IGRS" subtitle="जनसुनवाई पेंडेंसी अवलोकन — IO व संदर्भ-वार">
+      {/* Allotment button — primary action at top */}
+      <Pressable
+        onPress={() => router.push("/(app)/igrs/allotment")}
+        className="mb-5 flex-row items-center justify-between overflow-hidden rounded-2xl bg-indigo-600 px-5 py-4 active:bg-indigo-700"
+      >
+        <View className="flex-1 pr-3">
+          <Text className="text-base font-bold text-white">IGRS Allotment</Text>
+          <Text className="mt-0.5 text-xs text-indigo-100">
+            View pending applications and allot to Investigating Officers
+          </Text>
+        </View>
+        <View className="flex-row items-center gap-2">
+          <View className="rounded-full bg-white/20 p-2">
+            <MaterialIcons name="assignment-ind" size={20} color="#fff" />
+          </View>
+          <MaterialIcons name="chevron-right" size={20} color="#c7d2fe" />
+        </View>
+      </Pressable>
+
       <Banner message={error} variant="error" />
 
       {loading && !applications ? (
