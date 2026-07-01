@@ -39,7 +39,7 @@ function getChromePaths(): ChromePaths {
   return _chromePaths;
 }
 
-export async function launchDriver(): Promise<WebDriver> {
+export async function launchDriver(opts?: { downloadDir?: string }): Promise<WebDriver> {
   const { driverPath, browserPath } = getChromePaths();
 
   const options = new ChromeOptions();
@@ -51,6 +51,13 @@ export async function launchDriver(): Promise<WebDriver> {
     "--window-size=1366,900",
     "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
   );
+  if (opts?.downloadDir) {
+    options.setUserPreferences({
+      "download.default_directory": opts.downloadDir,
+      "download.prompt_for_download": false,
+      "plugins.always_open_pdf_externally": true,
+    });
+  }
   if (browserPath) {
     options.setChromeBinaryPath(browserPath);
   }
@@ -60,6 +67,19 @@ export async function launchDriver(): Promise<WebDriver> {
     .setChromeOptions(options)
     .setChromeService(new ServiceBuilder(driverPath))
     .build();
+}
+
+/** Like withDriver but with Chrome configured to auto-download files to `downloadDir`. */
+export async function withDownloadDriver<T>(
+  downloadDir: string,
+  task: (driver: WebDriver) => Promise<T>
+): Promise<T> {
+  const driver = await launchDriver({ downloadDir });
+  try {
+    return await task(driver);
+  } finally {
+    await driver.quit();
+  }
 }
 
 /** Waits for the first element matching `selector` and returns it. Throws on timeout. */

@@ -613,3 +613,101 @@ export async function runJanSunwaiReferenceSummaryScrape(): Promise<JanSunwaiRef
     };
   }
 }
+
+/**
+ * Downloads petition PDFs for Jan Sunwai applications using the portal's
+ * REST endpoint: /ajaxCheck/DownloadAttachment?attachmentId=btoa(appNo)&complaintType=N
+ *
+ * Requires a logged-in session. Logs in once, then downloads each PDF
+ * sequentially using axios with the session cookie, without navigating
+ * to each application's detail page individually.
+ */
+export async function runJanSunwaiPetitionPdfScrape(): Promise<JanSunwaiScrapeResult> {
+  const ranAt = new Date().toISOString();
+
+  if (!isConfigured()) {
+    return { ranAt, scraped: 0, stored: 0, skipped: true, reason: "Not configured" };
+  }
+
+  // Fetch applications that have a reference_type_code (tagged) and no petition_url yet
+  const { data: pending } = await supabaseAdmin
+    .from("jansunwai_applications")
+    .select("id,application_number,reference_type_code")
+    .is("petition_url", null)
+    .not("reference_type_code", "is", null)
+    .eq("status", "pending")
+    .order("scraped_at", { ascending: false })
+    .limit(50); // Process up to 50 per run
+
+  if (!pending || pending.length === 0) {
+    return { ranAt, scraped: 0, stored: 0, skipped: false };
+  }
+
+  try {
+    return await withDriver(async (driver) => {
+      const loggedIn = await login(driver);
+      if (!loggedIn) {
+        return { ranAt, scraped: 0, stored: 0, skipped: true, reason: "Login failed" };
+      }
+
+      // Extract session cookie for direct HTTP downloads
+      const cookies = await driver.manage().getCookies();
+      const cookieHeader = cookies.map((c: { name: string; value: string }) => `${c.name}=${c.value}`).join("; ");
+
+      let stored = 0;
+      for (const app of pending) {
+        const appNo = app.application_number;
+        const complaintType = app.reference_type_code;
+        const attachmentId = Buffer.from(String(appNo)).toString("base64");
+        const downloadUrl = `${env.jansunwaiPortalUrl}/ajaxCheck/DownloadAttachment?attachmentId=${attachmentId}&complaintType=${complaintType}&docType=`;
+
+        try {
+          const resp = await axios.get(downloadUrl, {
+            headers: { Cookie: cookieHeader, Referer: env.jansunwaiPortalUrl + "/igrs/officeLevelReferences" },
+            responseType: "arraybuffer",
+            validateStatus: () => true,
+            timeout: 20_000,
+          });
+
+          const contentType = String(resp.headers["content-type"] || "");
+          if (!contentType.includes("pdf") && !contentType.includes("octet-stream")) {
+            // Not a PDF — application might not have a file attachment
+            continue;
+          }
+
+          const pdfBytes = Buffer.from(resp.data as ArrayBuffer);
+          const disposition = resp.headers["content-disposition"] || "";
+          const match = disposition.match(/filename[^;=\n]*=["']?([^"';\n]+)/i);
+          const filename = match?.[1]?.trim() || `${appNo}.pdf`;
+          const storagePath = `${appNo}/${filename}`;
+
+          const { error: uploadErr } = await supabaseAdmin.storage
+            .from("jansunwai-petitions")
+            .upload(storagePath, pdfBytes, { contentType: "application/pdf", upsert: true });
+
+          if (uploadErr) {
+            console.error(`[jansunwai-pdf] Upload failed for ${appNo}:`, uploadErr.message);
+            continue;
+          }
+
+          const { data: urlData } = supabaseAdmin.storage.from("jansunwai-petitions").getPublicUrl(storagePath);
+
+          await supabaseAdmin
+            .from("jansunwai_applications")
+            .update({ petition_url: urlData.publicUrl, petition_format: "pdf" })
+            .eq("id", app.id);
+
+          console.log(`[jansunwai-pdf] Stored petition PDF for ${appNo}`);
+          stored++;
+        } catch (err) {
+          console.error(`[jansunwai-pdf] Failed for ${appNo}:`, err instanceof Error ? err.message : err);
+        }
+      }
+
+      return { ranAt, scraped: pending.length, stored, skipped: false };
+    });
+  } catch (err) {
+    console.error("[jansunwai-pdf] Scrape failed:", err);
+    return { ranAt, scraped: 0, stored: 0, skipped: true, reason: err instanceof Error ? err.message : "Unknown error" };
+  }
+}

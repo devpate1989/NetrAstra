@@ -1,7 +1,10 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { WebDriver } from "selenium-webdriver";
 import { env } from "../../config/env";
 import { supabaseAdmin } from "../../config/supabase";
-import { withDriver } from "./browser";
+import { withDriver, withDownloadDriver } from "./browser";
 
 /**
  * ──────────────────────────────────────────────────────────────────────────
@@ -242,6 +245,116 @@ export async function runPgComplaintsScrape(): Promise<PgScrapeResult> {
     });
   } catch (err) {
     console.error("[pg-scraper] Complaints scrape failed:", err);
+    return { ranAt, scraped: 0, stored: 0, skipped: true, reason: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+/**
+ * Downloads complaint form PDFs for all PG complaints that don't yet have
+ * a petition_url. Uses Chrome auto-download (the PostBack must fire in a
+ * real browser session — a plain HTTP POST returns HTML, not the PDF).
+ *
+ * For 7 complaints this takes ~3-4 min (login + 7 downloads).
+ */
+export async function runPgPdfScrape(): Promise<PgScrapeResult> {
+  const ranAt = new Date().toISOString();
+
+  if (!isConfigured()) {
+    return { ranAt, scraped: 0, stored: 0, skipped: true, reason: "Not configured" };
+  }
+
+  // Fetch complaints that still need a PDF
+  const { data: pending } = await supabaseAdmin
+    .from("public_grievances")
+    .select("id,complaint_no")
+    .is("petition_url", null)
+    .order("date_of_complaint", { ascending: false });
+
+  if (!pending || pending.length === 0) {
+    return { ranAt, scraped: 0, stored: 0, skipped: false };
+  }
+
+  const downloadDir = path.join(os.tmpdir(), "pg-pdfs");
+  fs.mkdirSync(downloadDir, { recursive: true });
+
+  try {
+    return await withDownloadDriver(downloadDir, async (driver) => {
+      const loggedIn = await login(driver);
+      if (!loggedIn) {
+        return { ranAt, scraped: 0, stored: 0, skipped: true, reason: "Login failed" };
+      }
+
+      await driver.get(base() + PG.allListPath);
+      await driver.sleep(3_000);
+
+      // Get row count in table to compute ctlXX index
+      const rowCount = await driver.executeScript<number>(
+        `const t = document.querySelector('#ContentPlaceHolder1_grvComplainantDetail'); return t ? t.rows.length - 1 : 0;`
+      );
+      console.log(`[pg-pdf] Found ${rowCount} rows, ${pending.length} complaints need PDFs`);
+
+      let stored = 0;
+
+      for (let i = 0; i < Math.min(rowCount, pending.length); i++) {
+        const complaint = pending[i];
+        const ctlIndex = `ctl0${(i + 2).toString().padStart(i >= 8 ? 2 : 1, "0")}`;
+        const eventTarget = `ctl00$ContentPlaceHolder1$grvComplainantDetail$${ctlIndex}$lnkComplaintFileDownload`;
+
+        // Clear download dir before each download
+        fs.readdirSync(downloadDir).forEach(f => fs.unlinkSync(path.join(downloadDir, f)));
+
+        try {
+          await driver.executeScript(`__doPostBack(arguments[0], '')`, eventTarget);
+          await driver.sleep(500);
+          // Dismiss any alert
+          try { const a = await driver.switchTo().alert(); await a.accept(); } catch {}
+        } catch (err) {
+          console.error(`[pg-pdf] PostBack failed for ${complaint.complaint_no}:`, err);
+          continue;
+        }
+
+        // Wait for the PDF to land in the download dir (up to 15s)
+        const deadline = Date.now() + 15_000;
+        let downloadedPath: string | null = null;
+        while (Date.now() < deadline) {
+          const files = fs.readdirSync(downloadDir).filter(f => !f.endsWith(".crdownload") && !f.endsWith(".tmp"));
+          if (files.length > 0) { downloadedPath = path.join(downloadDir, files[0]); break; }
+          await new Promise(r => setTimeout(r, 500));
+        }
+
+        if (!downloadedPath) {
+          console.warn(`[pg-pdf] No download for complaint ${complaint.complaint_no} (may not have a PDF attachment)`);
+          continue;
+        }
+
+        const pdfBytes = fs.readFileSync(downloadedPath);
+        const storagePath = `${complaint.complaint_no}/${path.basename(downloadedPath)}`;
+
+        const { error: uploadErr } = await supabaseAdmin.storage
+          .from("pg-complaints")
+          .upload(storagePath, pdfBytes, { contentType: "application/pdf", upsert: true });
+
+        if (uploadErr) {
+          console.error(`[pg-pdf] Upload failed for ${complaint.complaint_no}:`, uploadErr.message);
+          continue;
+        }
+
+        const { data: urlData } = supabaseAdmin.storage.from("pg-complaints").getPublicUrl(storagePath);
+        const petitionUrl = urlData.publicUrl;
+
+        await supabaseAdmin
+          .from("public_grievances")
+          .update({ petition_url: petitionUrl })
+          .eq("id", complaint.id);
+
+        console.log(`[pg-pdf] Stored PDF for ${complaint.complaint_no}: ${storagePath}`);
+        stored++;
+      }
+
+      return { ranAt, scraped: pending.length, stored, skipped: false };
+    });
+  } catch (err) {
+    console.error("[pg-pdf] PDF scrape failed:", err);
     return { ranAt, scraped: 0, stored: 0, skipped: true, reason: err instanceof Error ? err.message : "Unknown error" };
   }
 }
